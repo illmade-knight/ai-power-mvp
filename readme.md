@@ -20,19 +20,23 @@ We are a small consulting company that analyses client requirements and puts tog
 those client requirements. 
 
 Recently we have started incorporating IoT hardware into our portfolio and now offer more
-mixed compute and software solutions. Our clients have a need to monitor their electricity requirements and we are building
+mixed hardware and software solutions. Our clients have a need to monitor their electricity requirements and we are building
 solutions using hardware and software to address these requirements.
 
 ### Client A needs:
 The client has two main goals for the project
 
-a) The client wants to reduce overall electricity costs
-b) The client needs to monitor carbon emissions as part of upcoming legal requirements
+1) The client wants to reduce overall electricity costs
+2) The client needs to monitor carbon emissions as part of upcoming legal requirements
 
 We've thought of some requirements in advance but lets ask for some suggestions and compare 
 ````ai prompt
 can you turn these client needs into some specifice requirements?
 ````
+
+### Client A requirements:
+
+Gemini responds with:
 
 ````ai response
 
@@ -63,7 +67,6 @@ The system also needs to:
 This covers the main points from the detailed requirements document. Let me know if you'd like me to elaborate on any specific part!
 ````
 
-### Client A requirements:
 OK thanks gemini, one of our consultants had a quick call with the client and noted down some specific points
 they'd like included in the requirements. These overlap with what you've outlined - can you incorporate them together and
 clean them up to make it a coherent set of requirements?
@@ -102,8 +105,8 @@ We'll look first at some System Requirements on our side and our first thought i
 
 Remember this is just a MVP so we'll simplify for now.
 
-Here are some thoughts for the implementation - some may be over specific but we're thinking out loud and trying to get a  
-get a feel for the solution
+Here are some thoughts for the implementation - some may be over specific but we're thinking out loud and trying 
+to get a feel for the solution
 
 For the data gathering we'll start with a single energy monitor that reports every 2 minutes over MQTT.
 We'll need to ingest this data in its native format and store it. 

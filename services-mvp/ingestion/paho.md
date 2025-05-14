@@ -1,20 +1,52 @@
 ## Using PAHO
-ok we've used paho before so let's go with that.
-
-but for testing we want to keep the actual Paho implementation out of things for the moment.
-
-So in the next tests we want a struct with a channel Paho (or something else) can write to and
-then a func that reacts when messages arrive at the channel.
-
-We'll keep track of the messages arriving at least during initial testing to ensure all messages are handled.
-
-So our ProcessMessage tests should ensure valid incoming messages are correctly enhanced and invalid messages rejected and logged
-
-we'll use zerolog for our logging operation (though in general we like using core packages if they are sufficient)
-
-### Intermission
-
-That didn't really do anything so I added:
 
 no I think you misunderstood. I now want to start testing an implementation of the service. 
-So we'll have a struct IngestionService which has a chan for messages from the databroker. In future we'll add to this using Paho but until we wire that in we want to test IngesstionService ourselves by adding directly to the chan
+So we'll have a struct IngestionService which has a chan for messages from the databroker. 
+In future we'll add to this using Paho but until we wire that in we want to test IngesstionService 
+ourselves by adding directly to the chan.
+
+the [responser](paho-response.md) does mostly what we want - it starts a little weirdly,
+saying it was sorry for jumping ahead to a paho implementation, even though it hadn't done anything with paho, 
+just added some errMessages to the original files.
+
+from the response we've started building up the service
+
+our service tests now let us start doing things like
+
+````go
+rawMsgBytes := makeSampleRawMQTTMsgBytes("DEV002", "TestData2", time.Now())
+service.RawMessagesChan <- rawMsgBytes
+````
+
+now when we add in paho its receiveMessage can just add to the chan in a similar way to our existing tests
+
+### Actually use paho
+
+let's prompt it to use a real Paho client here
+
+````aiprompt
+ok, let's add in creating a real paho client.
+
+we want to get credentials securely from environment variables so we can connect securely over TLS
+
+when we have a paho client that works we'd like to think about an integration test 
+to see if things are going down the right path in a more 'real world' environment.
+````
+
+and the response goes into [paho-impl](paho-impl-response.md)
+
+this is nice, the change to the service struct is minimal
+
+````go
+mqttClientConfig *MQTTClientConfig
+pahoClient       mqtt.Client
+````
+
+we get a Config and a Client, the channels stay the same for now so the existing tests still run
+
+personally I might have separated the paho stuff but the presented solution is fine and keeps things looking the same.
+
+### Remember this is a MVP
+I'm deliberately not analysing things too much - we want our MVP out the door.
+
+We'll do a break down of what we like and don't like afterwards.
