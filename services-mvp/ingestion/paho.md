@@ -50,3 +50,11 @@ personally I might have separated the paho stuff but the presented solution is f
 I'm deliberately not analysing things too much - we want our MVP out the door.
 
 We'll do a break down of what we like and don't like afterwards.
+
+### Integration
+
+Ok this looks good - there are minimal changes to the existing service.
+We've got a docker image of eclipse mosquito
+
+recommend how we structure the running of an integration test using mosquito to create the messages
+

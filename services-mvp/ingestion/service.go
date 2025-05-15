@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"net/url"
 	"os"
 	"strings"
@@ -59,21 +60,24 @@ type IngestionService struct {
 }
 
 // NewIngestionService creates and initializes a new IngestionService.
+// NewIngestionService creates a new IngestionService now with a mqttCfg
 func NewIngestionService(
 	fetcher DeviceMetadataFetcher,
 	logger zerolog.Logger,
-	cfg IngestionServiceConfig,
+	serviceCfg IngestionServiceConfig,
+	mqttCfg *MQTTClientConfig,
 ) *IngestionService {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &IngestionService{
-		config:               cfg,
+		config:               serviceCfg,
+		mqttClientConfig:     mqttCfg,
 		fetcher:              fetcher,
 		logger:               logger,
 		cancelCtx:            ctx,
 		cancelFunc:           cancel,
-		RawMessagesChan:      make(chan []byte, cfg.InputChanCapacity),
-		EnrichedMessagesChan: make(chan *EnrichedMessage, cfg.OutputChanCapacity),
-		ErrorChan:            make(chan error, cfg.InputChanCapacity), // Buffer errors too
+		RawMessagesChan:      make(chan []byte, serviceCfg.InputChanCapacity),
+		EnrichedMessagesChan: make(chan *EnrichedMessage, serviceCfg.OutputChanCapacity),
+		ErrorChan:            make(chan error, serviceCfg.InputChanCapacity),
 	}
 }
 
@@ -131,6 +135,7 @@ func (s *IngestionService) processSingleMessage(rawMsg []byte, workerID int) {
 	case s.EnrichedMessagesChan <- enrichedMsg:
 		s.logger.Debug().Int("worker_id", workerID).Str("device_eui", enrichedMsg.DeviceEUI).Msg("Successfully processed and sent enriched message")
 	case <-s.cancelCtx.Done():
+		log.Warn().Msg("shutdown while processing")
 		s.logger.Warn().Int("worker_id", workerID).Str("device_eui", enrichedMsg.DeviceEUI).Msg("Shutdown signaled while trying to send enriched message")
 	}
 }
@@ -157,7 +162,7 @@ func (s *IngestionService) Start() error {
 		s.wg.Add(1)
 		go func(workerID int) {
 			defer s.wg.Done()
-			s.logger.Debug().Int("worker_id", workerID).Msg("Starting processing worker")
+			s.logger.Info().Int("worker_id", workerID).Msg("Starting processing worker")
 			for {
 				select {
 				case <-s.cancelCtx.Done():
@@ -174,7 +179,11 @@ func (s *IngestionService) Start() error {
 		}(i)
 	}
 
-	// Then, initialize and connect MQTT client
+	// Then, initialize and connect MQTT client if config available other assume we're testing etc
+	if s.mqttClientConfig == nil {
+		s.logger.Info().Msg("IngestionService started successfully, running without MQTT client.")
+		return nil
+	}
 	if err := s.initAndConnectMQTTClient(); err != nil {
 		s.logger.Error().Err(err).Msg("Failed to initialize or connect MQTT client during Start. Service may not receive messages.")
 		// Critical error: stop the already started workers and cleanup.
@@ -320,6 +329,7 @@ func newTLSConfig(cfg *MQTTClientConfig, logger zerolog.Logger) (*tls.Config, er
 // initAndConnectMQTTClient initializes and connects the Paho MQTT client.
 func (s *IngestionService) initAndConnectMQTTClient() error {
 	opts := mqtt.NewClientOptions()
+	s.logger.Debug().Str("broker", s.mqttClientConfig.BrokerURL).Msg("adding broker") //.Interface("config", s.mqttClientConfig)
 	opts.AddBroker(s.mqttClientConfig.BrokerURL)
 	// Generate a unique client ID
 	// ClientID must be unique for each connection to the broker.
@@ -335,7 +345,7 @@ func (s *IngestionService) initAndConnectMQTTClient() error {
 	opts.SetAutoReconnect(true) // Enable auto-reconnect
 	opts.SetMaxReconnectInterval(s.mqttClientConfig.ReconnectWaitMax)
 	opts.SetConnectionAttemptHandler(func(broker *url.URL, tlsCfg *tls.Config) *tls.Config {
-		s.logger.Info().Str("broker", broker.String()).Msg("Attempting to connect to MQTT broker")
+		log.Info().Str("broker", broker.String()).Msg("Attempting to connect to MQTT broker")
 		return tlsCfg // Return the original or modified TLS config
 	})
 
@@ -349,7 +359,7 @@ func (s *IngestionService) initAndConnectMQTTClient() error {
 			return fmt.Errorf("failed to create TLS config: %w", err)
 		}
 		opts.SetTLSConfig(tlsConfig)
-		s.logger.Info().Msg("TLS configured for MQTT client.")
+		log.Info().Msg("TLS configured for MQTT client.")
 	} else {
 		s.logger.Info().Msg("TLS not explicitly configured for MQTT client (broker URL does not start with tls:// or ssl://, or use port 8883).")
 	}
@@ -365,8 +375,9 @@ func (s *IngestionService) initAndConnectMQTTClient() error {
 	s.pahoClient = mqtt.NewClient(opts)
 	s.logger.Info().Str("client_id", opts.ClientID).Msg("Paho MQTT client created. Attempting to connect...")
 
+	log.Debug().Interface("servers", opts.Servers).Str("client_id", opts.ClientID).Msg("new client")
 	if token := s.pahoClient.Connect(); token.WaitTimeout(s.mqttClientConfig.ConnectTimeout) && token.Error() != nil {
-		s.logger.Error().Err(token.Error()).Msg("Failed to connect Paho MQTT client")
+		log.Error().Err(token.Error()).Msg("Failed to connect Paho MQTT client")
 		return fmt.Errorf("paho MQTT client connect error: %w", token.Error())
 	}
 
