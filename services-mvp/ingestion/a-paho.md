@@ -5,7 +5,7 @@ So we'll have a struct IngestionService which has a chan for messages from the d
 In future we'll add to this using Paho but until we wire that in we want to test IngesstionService 
 ourselves by adding directly to the chan.
 
-the [responser](paho-response.md) does mostly what we want - it starts a little weirdly,
+the [response](paho-response.md) does mostly what we want - it starts a little weirdly,
 saying it was sorry for jumping ahead to a paho implementation, even though it hadn't done anything with paho, 
 just added some errMessages to the original files.
 

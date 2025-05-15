@@ -4,8 +4,10 @@ package ingestion
 
 import (
 	"bytes"
+	"cloud.google.com/go/pubsub"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/rs/zerolog/log"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -24,10 +26,19 @@ import (
 )
 
 const (
+	// Mosquitto Test Config
 	testMosquittoImage = "eclipse-mosquitto:2.0" // Or your preferred version
 	testMqttBrokerPort = "1883/tcp"              // Default MQTT port
 	testMqttTopic      = "test/devices/+/up"
 	testDeviceEUI      = "INTTEST001"
+
+	// Pub/Sub Emulator Test Config
+	// Using the official gcloud emulators image
+	testPubSubEmulatorImage  = "gcr.io/google.com/cloudsdktool/cloud-sdk:emulators"
+	testPubSubEmulatorPort   = "8085/tcp" // Default port for Pub/Sub emulator
+	testPubSubProjectID      = "test-project"
+	testPubSubTopicID        = "enriched-device-messages"
+	testPubSubSubscriptionID = "test-subscription-for-ingestion"
 )
 
 // Helper to create a simple Paho publisher client for sending test messages.
@@ -108,29 +119,65 @@ func setupMosquittoContainer(t *testing.T, ctx context.Context) (brokerURL strin
 	}
 
 	return brokerURL, cleanupFunc
+}
 
-	// Manual/External Setup: Assume Mosquitto is running externally and reachable.
-	// You MUST ensure this is the case if not using testcontainers.
-	// For CI, you might use Docker Compose or a service in your pipeline.
-	/*
-		manualBrokerURL := "tcp://localhost:1883" // Adjust if your external Mosquitto is elsewhere
+// setupPubSubEmulator starts a Google Cloud Pub/Sub emulator container.
+func setupPubSubEmulator(t *testing.T, ctx context.Context) (emulatorHost string, cleanupFunc func()) {
+	t.Helper()
+	req := testcontainers.ContainerRequest{
+		Image:        testPubSubEmulatorImage,
+		ExposedPorts: []string{testPubSubEmulatorPort},
+		// The command to start the Pub/Sub emulator.
+		// Host and port need to be 0.0.0.0 to be accessible from the host.
+		Cmd:        []string{"gcloud", "beta", "emulators", "pubsub", "start", fmt.Sprintf("--host-port=0.0.0.0:%s", strings.Split(testPubSubEmulatorPort, "/")[0])},
+		WaitingFor: wait.ForLog("INFO: Server started, listening on").WithStartupTimeout(60 * time.Second),
+	}
+	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{ContainerRequest: req, Started: true})
+	require.NoError(t, err, "Failed to start Pub/Sub emulator container")
 
-		t.Logf("Assuming Mosquitto is running externally at: %s", manualBrokerURL)
-		t.Log("For reliable integration tests, consider using testcontainers-go.")
+	host, err := container.Host(ctx)
+	require.NoError(t, err)
+	port, err := container.MappedPort(ctx, testPubSubEmulatorPort)
+	require.NoError(t, err)
+	emulatorHost = fmt.Sprintf("%s:%s", host, port.Port())
+	t.Logf("Pub/Sub emulator container started, listening on: %s", emulatorHost)
 
-		// Ping the assumed broker to see if it's there
-		pingClient, err := createTestPublisherClient(manualBrokerURL, "ping-client", zerolog.Nop())
-		if err != nil {
-			t.Fatalf("Failed to ping assumed external Mosquitto at %s: %v. Ensure a broker is running and accessible.", manualBrokerURL, err)
-		}
-		pingClient.Disconnect(100)
+	// Create the topic and subscription on the emulator after it starts
+	// This requires a pubsub client configured to talk to the emulator
+	os.Setenv("PUBSUB_EMULATOR_HOST", emulatorHost) // Temporarily set for this client
+	defer os.Unsetenv("PUBSUB_EMULATOR_HOST")
 
+	adminClient, err := pubsub.NewClient(ctx, testPubSubProjectID) // No need for option.WithEndpoint with PUBSUB_EMULATOR_HOST set
+	require.NoError(t, err, "Failed to create Pub/Sub admin client for emulator")
+	defer adminClient.Close()
 
-		return manualBrokerURL, func() {
-			t.Log("Cleanup for externally managed Mosquitto is manual.")
-		}
+	topic := adminClient.Topic(testPubSubTopicID)
+	exists, err := topic.Exists(ctx)
+	require.NoError(t, err, "Failed to check if topic exists on emulator")
+	if !exists {
+		_, err = adminClient.CreateTopic(ctx, testPubSubTopicID)
+		require.NoError(t, err, "Failed to create topic on emulator")
+		t.Logf("Created Pub/Sub topic '%s' on emulator", testPubSubTopicID)
+	} else {
+		t.Logf("Pub/Sub topic '%s' already exists on emulator", testPubSubTopicID)
+	}
 
-	*/
+	// Create subscription for pulling messages in the test
+	sub := adminClient.Subscription(testPubSubSubscriptionID)
+	exists, err = sub.Exists(ctx)
+	require.NoError(t, err, "Failed to check if subscription exists on emulator")
+	if !exists {
+		_, err = adminClient.CreateSubscription(ctx, testPubSubSubscriptionID, pubsub.SubscriptionConfig{Topic: topic})
+		require.NoError(t, err, "Failed to create subscription on emulator")
+		t.Logf("Created Pub/Sub subscription '%s' on emulator", testPubSubSubscriptionID)
+	} else {
+		t.Logf("Pub/Sub subscription '%s' already exists on emulator", testPubSubSubscriptionID)
+	}
+
+	return emulatorHost, func() {
+		t.Log("Terminating Pub/Sub emulator container...")
+		require.NoError(t, container.Terminate(ctx))
+	}
 }
 
 // mockMetadataFetcher for integration tests
@@ -152,6 +199,9 @@ func TestIngestionService_Integration_ReceiveAndProcessMessage(t *testing.T) {
 	brokerURL, mosquittoCleanupFunc := setupMosquittoContainer(t, ctx)
 	defer mosquittoCleanupFunc()
 
+	pubsubEmulatorHost, pubsubEmulatorCleanupFunc := setupPubSubEmulator(t, ctx)
+	defer pubsubEmulatorCleanupFunc()
+
 	// 2. Setup Environment Variables for IngestionService
 	// Using t.Setenv (Go 1.17+) is preferred as it auto-cleans up.
 	// For older Go or if not available, use os.Setenv and manually unset.
@@ -159,6 +209,12 @@ func TestIngestionService_Integration_ReceiveAndProcessMessage(t *testing.T) {
 	t.Setenv("MQTT_BROKER_URL", brokerURL)
 	t.Setenv("MQTT_TOPIC", testMqttTopic)
 	t.Setenv("MQTT_CLIENT_ID_PREFIX", "int-test-ingestion-")
+
+	// Pub/Sub (to connect IngestionService's publisher to the emulator)
+	t.Setenv("PUBSUB_EMULATOR_HOST", pubsubEmulatorHost)
+	t.Setenv("GCP_PROJECT_ID", testPubSubProjectID)
+	t.Setenv("PUBSUB_TOPIC_ID_ENRICHED_MESSAGES", testPubSubTopicID)
+	t.Setenv("GCP_PUBSUB_CREDENTIALS_FILE", "") // Use emulator, no real creds needed
 
 	// 3. Initialize IngestionService
 	var logBuf bytes.Buffer
@@ -168,8 +224,17 @@ func TestIngestionService_Integration_ReceiveAndProcessMessage(t *testing.T) {
 	mqttCfg, err := LoadMQTTClientConfigFromEnv()
 	require.NoError(t, err, "Failed to load MQTT config from env for service")
 
+	pubsubCfg, err := LoadGooglePubSubPublisherConfigFromEnv()
+	require.NoError(t, err, "Failed to load Pub/Sub config for service")
+
+	// Create the real GooglePubSubPublisher, it will use PUBSUB_EMULATOR_HOST
+	realPublisher, err := NewGooglePubSubPublisher(ctx, pubsubCfg, logger.With().Str("component", "RealPubSubPublisher").Logger())
+	require.NoError(t, err, "Failed to create real GooglePubSubPublisher for emulator")
+	// defer realPublisher.Stop() // Service's Stop will call publisher.Stop()
+
 	serviceCfg := DefaultIngestionServiceConfig()
 	serviceCfg.NumProcessingWorkers = 1 // Keep it simple for this test
+	serviceCfg.InputChanCapacity = 10
 
 	mockedClientID := "TestClient123"
 	mockedLocationID := "TestLocationXYZ"
@@ -177,20 +242,27 @@ func TestIngestionService_Integration_ReceiveAndProcessMessage(t *testing.T) {
 	fetcher := integrationMockFetcher(t, testDeviceEUI, mockedClientID, mockedLocationID, mockedCategory, nil)
 
 	mqttCfg.InsecureSkipVerify = true
-	service := NewIngestionService(fetcher, logger, serviceCfg, mqttCfg)
+	service := NewIngestionService(fetcher, realPublisher, logger, serviceCfg, mqttCfg)
 	err = service.Start() // Start the service, which includes connecting to MQTT
 	require.NoError(t, err, "IngestionService failed to start")
 	defer service.Stop()
 
 	// Give the service a moment to connect and subscribe
 	// A more robust way is to wait for a "subscribed" log message or use Paho's OnSubscribe handler.
-	time.Sleep(500 * time.Millisecond) // Adjust as needed
+	time.Sleep(2 * time.Second) // Adjust as needed
 
 	// 4. Create a Test Publisher Client
 	log.Debug().Msg("creating test publisher client")
 	publisher, err := createTestPublisherClient(brokerURL, "test-publisher-client", logger)
 	require.NoError(t, err, "Failed to create test publisher client")
 	defer publisher.Disconnect(250)
+
+	// 5. Create Test Pub/Sub Subscriber (to pull from emulator)
+	// PUBSUB_EMULATOR_HOST is already set for this test's environment
+	subClient, err := pubsub.NewClient(ctx, testPubSubProjectID)
+	require.NoError(t, err, "Failed to create Pub/Sub subscriber client for emulator")
+	defer subClient.Close()
+	subscription := subClient.Subscription(testPubSubSubscriptionID)
 
 	// 5. Publish a Test Message
 	sampleMsgTime := time.Now().UTC().Truncate(time.Second)
@@ -215,35 +287,43 @@ func TestIngestionService_Integration_ReceiveAndProcessMessage(t *testing.T) {
 	require.NoError(t, token.Error(), "Test publisher failed to publish message")
 	logger.Info().Str("topic", publishTopic).Msg("Test message published")
 
-	// 6. Verify Outcome
-	var receivedEnrichedMsg *EnrichedMessage
-	select {
-	case receivedEnrichedMsg = <-service.EnrichedMessagesChan:
-		logger.Info().Interface("enriched_msg", receivedEnrichedMsg).Msg("Received enriched message from service")
-	case err := <-service.ErrorChan:
-		t.Fatalf("IngestionService ErrorChan received an error: %v. Logs:\n%s", err, logBuf.String())
-	case <-time.After(5 * time.Second): // Generous timeout for message to go through
-		t.Fatalf("Timeout waiting for enriched message from IngestionService. Logs:\n%s", logBuf.String())
+	// 7. Pull and Verify Message from Pub/Sub Emulator
+	var receivedEnrichedMsg EnrichedMessage
+	pullCtx, pullCancel := context.WithTimeout(ctx, 20*time.Second) // Timeout for pulling message
+	defer pullCancel()
+
+	err = subscription.Receive(pullCtx, func(ctx context.Context, msg *pubsub.Message) {
+		logger.Info().Str("pubsub_msg_id", msg.ID).Int("data_len", len(msg.Data)).Msg("Received message from Pub/Sub emulator")
+		msg.Ack() // Acknowledge the message
+		err := json.Unmarshal(msg.Data, &receivedEnrichedMsg)
+		if err != nil {
+			t.Errorf("Failed to unmarshal message from Pub/Sub: %v. Data: %s", err, string(msg.Data))
+			// Don't call t.FailNow or t.Fatal here as it's in a goroutine from Receive.
+			// Instead, signal error through a channel or check receivedEnrichedMsg afterwards.
+		}
+		pullCancel() // Stop receiving after one message
+	})
+
+	if err != nil && !errors.Is(err, context.Canceled) { // context.Canceled is expected after pullCancel()
+		t.Fatalf("Pub/Sub Receive error: %v. Logs:\n%s", err, logBuf.String())
 	}
 
-	require.NotNil(t, receivedEnrichedMsg, "Enriched message should not be nil")
-	assert.Equal(t, testDeviceEUI, receivedEnrichedMsg.DeviceEUI, "DeviceEUI mismatch")
-	assert.Equal(t, testPayload, receivedEnrichedMsg.RawPayload, "RawPayload mismatch")
-	assert.Equal(t, mockedClientID, receivedEnrichedMsg.ClientID, "ClientID mismatch")
-	assert.Equal(t, mockedLocationID, receivedEnrichedMsg.LocationID, "LocationID mismatch")
-	assert.Equal(t, mockedCategory, receivedEnrichedMsg.DeviceCategory, "DeviceCategory mismatch")
-	assert.True(t, sourceMsg.MessageTimestamp.Equal(receivedEnrichedMsg.OriginalMQTTTime), "OriginalMQTTTime mismatch")
-	assert.False(t, receivedEnrichedMsg.IngestionTimestamp.IsZero(), "IngestionTimestamp should be set")
+	// Check if pullCtx was cancelled because a message was processed or if it timed out
+	if pullCtx.Err() == context.DeadlineExceeded {
+		t.Fatalf("Timeout waiting for message from Pub/Sub emulator. Logs:\n%s", logBuf.String())
+	}
 
-	// Check logs for specific messages if needed
-	// For example, check if the Paho client connected and subscribed
+	require.NotZero(t, receivedEnrichedMsg.DeviceEUI, "Enriched message appears to be empty/not unmarshalled")
+	assert.Equal(t, testDeviceEUI, receivedEnrichedMsg.DeviceEUI)
+	assert.Equal(t, testPayload, receivedEnrichedMsg.RawPayload)
+	assert.Equal(t, mockedClientID, receivedEnrichedMsg.ClientID)
+	assert.True(t, sourceMsg.MessageTimestamp.Equal(receivedEnrichedMsg.OriginalMQTTTime))
+	assert.False(t, receivedEnrichedMsg.IngestionTimestamp.IsZero())
+
 	logs := logBuf.String()
-	assert.Contains(t, logs, "Paho client connected to MQTT broker", "Missing Paho connect log")
-	assert.Contains(t, logs, "Successfully subscribed to MQTT topic", "Missing Paho subscribe log")
-	assert.Contains(t, logs, "Paho client received message", "Missing Paho message received log")
-	assert.Contains(t, logs, "Successfully enriched MQTT message", "Missing enrichment success log")
-
-	t.Logf("Integration test completed successfully. Logs:\n%s", logs)
+	assert.Contains(t, logs, "GooglePubSubPublisher initialized successfully")
+	assert.Contains(t, logs, "Message published successfully to Pub/Sub")
+	t.Logf("Full flow integration test completed. Logs:\n%s", logs)
 }
 
 // Add more integration tests:

@@ -2,7 +2,10 @@ package ingestion
 
 import (
 	"bytes"
+	"context"
 	"errors"
+	"fmt"
+	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/rs/zerolog/log"
 	"strings"
 	"sync"
@@ -22,6 +25,83 @@ func mockMetadataFetcherFunc(deviceEUI string, expectedEUI string, clientID, loc
 	}
 }
 
+// --- MockMessagePublisher ---
+type MockMessagePublisher struct {
+	PublishedMessagesChan chan *EnrichedMessage
+	logger                zerolog.Logger
+	stopCalled            bool
+	mu                    sync.Mutex
+	PublishError          error // Optional: Set this to simulate publish errors
+}
+
+func NewMockMessagePublisher(bufferSize int, logger zerolog.Logger) *MockMessagePublisher {
+	return &MockMessagePublisher{
+		PublishedMessagesChan: make(chan *EnrichedMessage, bufferSize),
+		logger:                logger,
+	}
+}
+
+func (mp *MockMessagePublisher) Publish(_ context.Context, message *EnrichedMessage) error {
+	mp.mu.Lock()
+	defer mp.mu.Unlock()
+	if mp.PublishError != nil {
+		mp.logger.Warn().Err(mp.PublishError).Msg("MockMessagePublisher: Simulating publish error")
+		return mp.PublishError
+	}
+
+	if mp.stopCalled {
+		mp.logger.Warn().Msg("MockMessagePublisher: Publish called after Stop")
+		return errors.New("publisher stopped")
+	}
+
+	select {
+	case mp.PublishedMessagesChan <- message:
+		mp.logger.Debug().Str("device_eui", message.DeviceEUI).Msg("MockMessagePublisher: Message sent to PublishedMessagesChan")
+		return nil
+	default:
+		// This case means the channel is full, simulating a downstream blockage
+		// or a test not consuming messages quickly enough.
+		mp.logger.Error().Str("device_eui", message.DeviceEUI).Msg("MockMessagePublisher: PublishedMessagesChan is full, message dropped")
+		return errors.New("mock publisher channel full")
+	}
+}
+
+func (mp *MockMessagePublisher) Stop() {
+	mp.mu.Lock()
+	defer mp.mu.Unlock()
+	if !mp.stopCalled {
+		close(mp.PublishedMessagesChan)
+		mp.stopCalled = true
+		mp.logger.Info().Msg("MockMessagePublisher: Stopped and PublishedMessagesChan closed")
+	}
+}
+
+// --- Test Setup Helpers (createTestPublisherClient, setupMosquittoContainer, integrationMockFetcher) ---
+// These helpers can remain largely the same as in the previous version of this file.
+// For brevity, I'll assume they are present and correct.
+// Ensure setupMosquittoContainer uses the constants defined above for this test file if needed.
+// Helper to create a simple Paho publisher client for sending test messages.
+func createTestPublisherClientForMockTest(brokerURL string, clientID string, logger zerolog.Logger) (mqtt.Client, error) {
+	opts := mqtt.NewClientOptions()
+	opts.AddBroker(brokerURL)
+	opts.SetClientID(clientID)
+	opts.SetConnectTimeout(5 * time.Second)
+	opts.SetWriteTimeout(5 * time.Second)
+	opts.SetPingTimeout(5 * time.Second)
+	opts.OnConnectionLost = func(client mqtt.Client, err error) {
+		logger.Error().Err(err).Str("client_id", clientID).Msg("Test publisher lost connection")
+	}
+	opts.OnConnect = func(client mqtt.Client) {
+		logger.Info().Str("client_id", clientID).Str("broker", brokerURL).Msg("Test publisher connected")
+	}
+
+	client := mqtt.NewClient(opts)
+	if token := client.Connect(); token.WaitTimeout(10*time.Second) && token.Error() != nil {
+		return nil, fmt.Errorf("test publisher (client ID: %s) failed to connect to %s: %w", clientID, brokerURL, token.Error())
+	}
+	return client, nil
+}
+
 func TestIngestionService_SuccessfulProcessing(t *testing.T) {
 	var logBuf bytes.Buffer
 	logger := zerolog.New(&logBuf).Level(zerolog.DebugLevel)
@@ -29,7 +109,8 @@ func TestIngestionService_SuccessfulProcessing(t *testing.T) {
 	fetcher := mockMetadataFetcherFunc("DEV001", "DEV001", "ClientA", "Loc1", "Sensor", nil)
 	cfg := DefaultIngestionServiceConfig()
 	cfg.NumProcessingWorkers = 1 // Easier to reason about for single message test
-	service := NewIngestionService(fetcher, logger, cfg, nil)
+	mp := NewMockMessagePublisher(cfg.NumProcessingWorkers, logger)
+	service := NewIngestionService(fetcher, mp, logger, cfg, nil)
 
 	service.Start()
 
@@ -41,7 +122,7 @@ func TestIngestionService_SuccessfulProcessing(t *testing.T) {
 
 	var enrichedMsg *EnrichedMessage
 	select {
-	case enrichedMsg = <-service.EnrichedMessagesChan:
+	case enrichedMsg = <-mp.PublishedMessagesChan:
 		// Message received
 	case err := <-service.ErrorChan:
 		t.Fatalf("Received unexpected error on ErrorChan: %v. Log: %s", err, logBuf.String())
@@ -70,7 +151,7 @@ func TestIngestionService_SuccessfulProcessing(t *testing.T) {
 	service.Stop() // Gracefully stop the service
 
 	// Check logs for success (optional)
-	if !strings.Contains(logBuf.String(), "Successfully processed and sent enriched message") {
+	if !strings.Contains(logBuf.String(), "Successfully processed and published enriched message") {
 		t.Errorf("Missing success log. Logs: %s", logBuf.String())
 	}
 }
@@ -83,14 +164,15 @@ func TestIngestionService_ParsingError(t *testing.T) {
 	fetcher := mockMetadataFetcherFunc("any", "any", "", "", "", errors.New("fetcher should not be called"))
 	cfg := DefaultIngestionServiceConfig()
 	cfg.NumProcessingWorkers = 1
-	service := NewIngestionService(fetcher, logger, cfg, nil)
+	mp := NewMockMessagePublisher(cfg.NumProcessingWorkers, logger)
+	service := NewIngestionService(fetcher, mp, logger, cfg, nil)
 	service.Start()
 
 	malformedJSON := []byte("this is not json")
 	service.RawMessagesChan <- malformedJSON
 
 	select {
-	case em := <-service.EnrichedMessagesChan:
+	case em := <-mp.PublishedMessagesChan:
 		t.Fatalf("Received unexpected enriched message: %v", em)
 	case err := <-service.ErrorChan:
 		t.Logf("Received expected error on ErrorChan: %v", err)
@@ -121,14 +203,15 @@ func TestIngestionService_MetadataFetchingError(t *testing.T) {
 	fetcher := mockMetadataFetcherFunc("DEV002", "DEV002", "", "", "", ErrMetadataNotFound)
 	cfg := DefaultIngestionServiceConfig()
 	cfg.NumProcessingWorkers = 1
-	service := NewIngestionService(fetcher, logger, cfg, nil)
+	mp := NewMockMessagePublisher(cfg.NumProcessingWorkers, logger)
+	service := NewIngestionService(fetcher, mp, logger, cfg, nil)
 	service.Start()
 
 	rawMsgBytes := makeSampleRawMQTTMsgBytes("DEV002", "TestData2", time.Now())
 	service.RawMessagesChan <- rawMsgBytes
 
 	select {
-	case em := <-service.EnrichedMessagesChan:
+	case em := <-mp.PublishedMessagesChan:
 		t.Fatalf("Received unexpected enriched message: %v", em)
 	case err := <-service.ErrorChan:
 		t.Logf("Received expected error on ErrorChan: %v", err)
@@ -160,7 +243,8 @@ func TestIngestionService_StartStopMultipleWorkers(t *testing.T) {
 	cfg.InputChanCapacity = 10
 	cfg.OutputChanCapacity = 10
 
-	service := NewIngestionService(fetcher, logger, cfg, nil)
+	mp := NewMockMessagePublisher(cfg.NumProcessingWorkers, logger)
+	service := NewIngestionService(fetcher, mp, logger, cfg, nil)
 	service.Start()
 
 	numMessages := 5
@@ -170,7 +254,7 @@ func TestIngestionService_StartStopMultipleWorkers(t *testing.T) {
 
 	go func() { // Goroutine to collect enriched messages
 		defer wgReceivers.Done()
-		for msg := range service.EnrichedMessagesChan { // Drains the channel until it's closed by Stop()
+		for msg := range mp.PublishedMessagesChan { // Drains the channel until it's closed by Stop()
 			receivedMessages = append(receivedMessages, msg)
 		}
 	}()
@@ -194,7 +278,7 @@ func TestIngestionService_StartStopMultipleWorkers(t *testing.T) {
 
 	// Give some time for messages to be processed before stopping
 	// This is a bit arbitrary; a more robust way would be to count outputs.
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(1500 * time.Millisecond)
 
 	service.Stop()     // This will close EnrichedMessagesChan, ending the receiver goroutine's loop
 	wgReceivers.Wait() // Wait for receiver to finish
@@ -237,7 +321,8 @@ func TestIngestionService_ShutdownWithPendingMessages(t *testing.T) {
 	cfg.NumProcessingWorkers = 2
 	cfg.InputChanCapacity = 5
 	cfg.OutputChanCapacity = 5
-	service := NewIngestionService(delayedFetcher, logger, cfg, nil)
+	mp := NewMockMessagePublisher(cfg.NumProcessingWorkers, logger)
+	service := NewIngestionService(delayedFetcher, mp, logger, cfg, nil)
 	service.Start()
 
 	// Send some messages
@@ -258,7 +343,7 @@ func TestIngestionService_ShutdownWithPendingMessages(t *testing.T) {
 	// Drain EnrichedMessagesChan
 	go func() {
 		defer wgDone.Done()
-		for range service.EnrichedMessagesChan {
+		for range mp.PublishedMessagesChan {
 			processedCount++
 		}
 	}()

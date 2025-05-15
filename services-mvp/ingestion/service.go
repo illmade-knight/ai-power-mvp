@@ -45,6 +45,8 @@ type IngestionService struct {
 	// the change from our refactor to add Paho
 	mqttClientConfig *MQTTClientConfig
 	pahoClient       mqtt.Client
+	// the change from our refactor to add pubsub
+	publisher MessagePublisher // Using the interface
 
 	config     IngestionServiceConfig
 	fetcher    DeviceMetadataFetcher
@@ -54,30 +56,30 @@ type IngestionService struct {
 	cancelFunc context.CancelFunc // Function to call to initiate shutdown
 
 	// Public channels for interaction
-	RawMessagesChan      chan []byte           // Input: Raw JSON messages
-	EnrichedMessagesChan chan *EnrichedMessage // Output: Successfully enriched messages
-	ErrorChan            chan error            // Output: Errors encountered during processing (optional, for observability)
+	RawMessagesChan chan []byte // Input: Raw JSON messages
+	ErrorChan       chan error  // Output: Errors encountered during processing (optional, for observability)
 }
 
 // NewIngestionService creates and initializes a new IngestionService.
 // NewIngestionService creates a new IngestionService now with a mqttCfg
 func NewIngestionService(
 	fetcher DeviceMetadataFetcher,
+	publisher MessagePublisher, // Inject the publisher
 	logger zerolog.Logger,
 	serviceCfg IngestionServiceConfig,
 	mqttCfg *MQTTClientConfig,
 ) *IngestionService {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &IngestionService{
-		config:               serviceCfg,
-		mqttClientConfig:     mqttCfg,
-		fetcher:              fetcher,
-		logger:               logger,
-		cancelCtx:            ctx,
-		cancelFunc:           cancel,
-		RawMessagesChan:      make(chan []byte, serviceCfg.InputChanCapacity),
-		EnrichedMessagesChan: make(chan *EnrichedMessage, serviceCfg.OutputChanCapacity),
-		ErrorChan:            make(chan error, serviceCfg.InputChanCapacity),
+		config:           serviceCfg,
+		mqttClientConfig: mqttCfg,
+		fetcher:          fetcher,
+		publisher:        publisher,
+		logger:           logger,
+		cancelCtx:        ctx,
+		cancelFunc:       cancel,
+		RawMessagesChan:  make(chan []byte, serviceCfg.InputChanCapacity),
+		ErrorChan:        make(chan error, serviceCfg.InputChanCapacity),
 	}
 }
 
@@ -103,7 +105,7 @@ func (s *IngestionService) handleIncomingPahoMessage(client mqtt.Client, msg mqt
 }
 
 // processSingleMessage handles parsing and enrichment of one raw message.
-func (s *IngestionService) processSingleMessage(rawMsg []byte, workerID int) {
+func (s *IngestionService) processSingleMessage(ctx context.Context, rawMsg []byte, workerID int) {
 	s.logger.Debug().Int("worker_id", workerID).Int("msg_size_bytes", len(rawMsg)).Msg("Received raw message for processing")
 
 	mqttMsg, err := ParseMQTTMessage(rawMsg)
@@ -130,13 +132,21 @@ func (s *IngestionService) processSingleMessage(rawMsg []byte, workerID int) {
 		return
 	}
 
-	// Try to send to EnrichedMessagesChan, but handle potential shutdown.
-	select {
-	case s.EnrichedMessagesChan <- enrichedMsg:
-		s.logger.Debug().Int("worker_id", workerID).Str("device_eui", enrichedMsg.DeviceEUI).Msg("Successfully processed and sent enriched message")
-	case <-s.cancelCtx.Done():
-		log.Warn().Msg("shutdown while processing")
-		s.logger.Warn().Int("worker_id", workerID).Str("device_eui", enrichedMsg.DeviceEUI).Msg("Shutdown signaled while trying to send enriched message")
+	// Publish the enriched message
+	// Use a child context with a timeout for the publish operation if desired
+	publishCtx, publishCancel := context.WithTimeout(ctx, 30*time.Second) // Example timeout
+	defer publishCancel()
+
+	if err := s.publisher.Publish(publishCtx, enrichedMsg); err != nil {
+		s.logger.Error().
+			Int("worker_id", workerID).
+			Str("device_eui", enrichedMsg.DeviceEUI).
+			Err(err).
+			Msg("Failed to publish enriched message")
+		s.sendError(err) // Send this critical error to the error channel
+		// Decide on retry strategy or if message should be dead-lettered
+	} else {
+		s.logger.Debug().Int("worker_id", workerID).Str("device_eui", enrichedMsg.DeviceEUI).Msg("Successfully processed and published enriched message")
 	}
 }
 
@@ -173,7 +183,7 @@ func (s *IngestionService) Start() error {
 						s.logger.Info().Int("worker_id", workerID).Msg("RawMessagesChan closed, worker stopping")
 						return
 					}
-					s.processSingleMessage(rawMsg, workerID)
+					s.processSingleMessage(s.cancelCtx, rawMsg, workerID) // Pass context for publisher
 				}
 			}
 		}(i)
@@ -196,9 +206,6 @@ func (s *IngestionService) Start() error {
 		// And it will be closed in Stop() eventually.
 		go func() { // Non-blocking wait and channel close for cleanup
 			s.wg.Wait()
-			if s.EnrichedMessagesChan != nil {
-				close(s.EnrichedMessagesChan)
-			}
 			if s.ErrorChan != nil {
 				close(s.ErrorChan)
 			}
@@ -218,38 +225,30 @@ func (s *IngestionService) Start() error {
 func (s *IngestionService) Stop() {
 	s.logger.Info().Msg("Stopping IngestionService...")
 
-	// 1. Disconnect Paho client if connected
 	if s.pahoClient != nil && s.pahoClient.IsConnected() {
 		s.logger.Info().Msg("Disconnecting Paho MQTT client...")
-		// Unsubscribe if needed, though Disconnect should handle it.
-		// client.Unsubscribe(s.mqttClientConfig.Topic)
-		s.pahoClient.Disconnect(250) // Wait 250ms for disconnect to complete
+		s.pahoClient.Disconnect(250)
 		s.logger.Info().Msg("Paho MQTT client disconnected.")
-	} else {
-		s.logger.Info().Msg("Paho MQTT client was not connected or already nil.")
 	}
 
-	// 2. Signal workers to stop by cancelling the context.
 	s.logger.Info().Msg("Signalling worker goroutines to stop...")
 	s.cancelFunc()
 
-	// 3. Close RawMessagesChan to ensure workers reading from it will eventually unblock and see context done or channel closed.
-	// This step is important if workers are blocked on an empty RawMessagesChan.
-	// Check if channel is already closed to prevent panic (though in normal flow it shouldn't be).
-	// A more robust way is to use a once mechanism or check channel status if Stop can be called multiple times.
-	s.logger.Info().Msg("Closing RawMessagesChan...")
-	close(s.RawMessagesChan)
+	// It's generally safer not to close RawMessagesChan if an external component (Paho) is writing to it.
+	// Paho's disconnection and the context cancellation should be the primary signals for workers.
+	// If Paho is guaranteed to stop writing before/during this Stop(), then closing might be okay.
+	// For now, relying on cancelCtx.
+	// s.logger.Info().Msg("Closing RawMessagesChan...")
+	// close(s.RawMessagesChan) // Be cautious with this if Paho might still write.
 
-	// 4. Wait for all processing goroutines to finish.
 	s.logger.Info().Msg("Waiting for worker goroutines to complete...")
 	s.wg.Wait()
 	s.logger.Info().Msg("All worker goroutines completed.")
 
-	// 5. Close output channels after all workers are done.
-	if s.EnrichedMessagesChan != nil {
-		s.logger.Info().Msg("Closing EnrichedMessagesChan...")
-		close(s.EnrichedMessagesChan)
+	if s.publisher != nil {
+		s.publisher.Stop() // Stop the message publisher
 	}
+
 	if s.ErrorChan != nil {
 		s.logger.Info().Msg("Closing ErrorChan...")
 		close(s.ErrorChan)
