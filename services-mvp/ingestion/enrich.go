@@ -1,22 +1,10 @@
 package ingestion
 
 import (
-	"context"
 	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"time"
 )
-
-// DeviceMetadataFetcher is a function type for fetching device-specific metadata.
-type DeviceMetadataFetcher func(deviceEUI string) (clientID, locationID, category string, err error)
-
-// --- Publisher Abstraction ---
-
-// MessagePublisher defines an interface for publishing enriched messages.
-// This allows for different implementations (e.g., Google Pub/Sub, Kafka, mock).
-type MessagePublisher interface {
-	Publish(ctx context.Context, message *EnrichedMessage) error
-	Stop() // For releasing resources
-}
 
 // EnrichMQTTData processes an MQTTMessage, validates it, fetches metadata,
 // and creates an EnrichedMessage.
@@ -41,6 +29,8 @@ func EnrichMQTTData(
 			Str("device_eui", mqttMsg.DeviceInfo.DeviceEUI).
 			Err(err).
 			Msg("Failed to fetch device metadata during enrichment")
+
+		log.Error().Str("deviceID", mqttMsg.DeviceInfo.DeviceEUI).Err(err).Msg("get device failed")
 		return nil, err
 	}
 

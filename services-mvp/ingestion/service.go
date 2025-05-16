@@ -46,7 +46,8 @@ type IngestionService struct {
 	mqttClientConfig *MQTTClientConfig
 	pahoClient       mqtt.Client
 	// the change from our refactor to add pubsub
-	publisher MessagePublisher // Using the interface
+	publisher                   MessagePublisher // Using the interface
+	unidentifiedDevicePublisher MessagePublisher // new dead letter publisher
 
 	config     IngestionServiceConfig
 	fetcher    DeviceMetadataFetcher
@@ -64,22 +65,23 @@ type IngestionService struct {
 // NewIngestionService creates a new IngestionService now with a mqttCfg
 func NewIngestionService(
 	fetcher DeviceMetadataFetcher,
-	publisher MessagePublisher, // Inject the publisher
+	publisher, unidentifiedPublisher MessagePublisher, // Inject the publisher
 	logger zerolog.Logger,
 	serviceCfg IngestionServiceConfig,
 	mqttCfg *MQTTClientConfig,
 ) *IngestionService {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &IngestionService{
-		config:           serviceCfg,
-		mqttClientConfig: mqttCfg,
-		fetcher:          fetcher,
-		publisher:        publisher,
-		logger:           logger,
-		cancelCtx:        ctx,
-		cancelFunc:       cancel,
-		RawMessagesChan:  make(chan []byte, serviceCfg.InputChanCapacity),
-		ErrorChan:        make(chan error, serviceCfg.InputChanCapacity),
+		config:                      serviceCfg,
+		mqttClientConfig:            mqttCfg,
+		fetcher:                     fetcher,
+		publisher:                   publisher,
+		unidentifiedDevicePublisher: unidentifiedPublisher, // Store new publisher
+		logger:                      logger,
+		cancelCtx:                   ctx,
+		cancelFunc:                  cancel,
+		RawMessagesChan:             make(chan []byte, serviceCfg.InputChanCapacity),
+		ErrorChan:                   make(chan error, serviceCfg.InputChanCapacity),
 	}
 }
 
@@ -108,6 +110,7 @@ func (s *IngestionService) handleIncomingPahoMessage(client mqtt.Client, msg mqt
 func (s *IngestionService) processSingleMessage(ctx context.Context, rawMsg []byte, workerID int) {
 	s.logger.Debug().Int("worker_id", workerID).Int("msg_size_bytes", len(rawMsg)).Msg("Received raw message for processing")
 
+	log.Debug().Msg("single message")
 	mqttMsg, err := ParseMQTTMessage(rawMsg)
 	if err != nil {
 		s.logger.Error().
@@ -121,6 +124,10 @@ func (s *IngestionService) processSingleMessage(ctx context.Context, rawMsg []by
 
 	enrichedMsg, err := EnrichMQTTData(mqttMsg, s.fetcher, s.logger)
 	if err != nil {
+		// If we don't have Metadata - send to our dead message topic
+		if errors.Is(err, ErrMetadataNotFound) {
+			s.handleUnidentifiedMessage(ctx, mqttMsg, workerID)
+		}
 		// EnrichMQTTData already logs detailed errors.
 		// We might just log that enrichment failed at this level or send to ErrorChan.
 		s.logger.Warn().
@@ -132,12 +139,13 @@ func (s *IngestionService) processSingleMessage(ctx context.Context, rawMsg []by
 		return
 	}
 
+	log.Debug().Msg("enriched message")
 	// Publish the enriched message
 	// Use a child context with a timeout for the publish operation if desired
 	publishCtx, publishCancel := context.WithTimeout(ctx, 30*time.Second) // Example timeout
 	defer publishCancel()
 
-	if err := s.publisher.Publish(publishCtx, enrichedMsg); err != nil {
+	if err := s.publisher.PublishEnriched(publishCtx, enrichedMsg); err != nil {
 		s.logger.Error().
 			Int("worker_id", workerID).
 			Str("device_eui", enrichedMsg.DeviceEUI).
@@ -148,6 +156,30 @@ func (s *IngestionService) processSingleMessage(ctx context.Context, rawMsg []by
 	} else {
 		s.logger.Debug().Int("worker_id", workerID).Str("device_eui", enrichedMsg.DeviceEUI).Msg("Successfully processed and published enriched message")
 	}
+}
+
+func (s *IngestionService) handleUnidentifiedMessage(ctx context.Context, mqttMsg *MQTTMessage, workerID int) {
+
+	unidentifiedMsg := UnidentifiedDeviceMessage{
+		DeviceEUI:          mqttMsg.DeviceInfo.DeviceEUI,
+		RawPayload:         mqttMsg.RawPayload,
+		OriginalMQTTTime:   mqttMsg.MessageTimestamp,
+		LoRaWANReceivedAt:  mqttMsg.LoRaWAN.ReceivedAt,
+		IngestionTimestamp: time.Now().UTC(),
+		ProcessingError:    ErrMetadataNotFound.Error(),
+	}
+	publishCtx, publishCancel := context.WithTimeout(ctx, 30*time.Second)
+	defer publishCancel()
+	// Use the new PublishUnidentified method
+	if pubErr := s.unidentifiedDevicePublisher.PublishUnidentified(publishCtx, &unidentifiedMsg); pubErr != nil {
+		s.logger.Error().Int("worker_id", workerID).Str("device_eui", mqttMsg.DeviceInfo.DeviceEUI).Err(pubErr).Msg("Failed to publish to unidentified device topic")
+		s.sendError(fmt.Errorf("failed to publish unidentified device msg for %s: %w", mqttMsg.DeviceInfo.DeviceEUI, pubErr))
+	} else {
+		s.logger.Info().Int("worker_id", workerID).Str("device_eui", mqttMsg.DeviceInfo.DeviceEUI).Msg("Successfully published to unidentified device topic")
+	}
+	// Do not send original ErrMetadataNotFound to ErrorChan if successfully routed,
+	// or decide if ErrorChan should still receive it for general monitoring.
+	// For now, we consider successful routing to the unidentified topic as handling this specific error.
 }
 
 // sendError attempts to send an error to the ErrorChan if it's non-nil and there's capacity.
@@ -247,6 +279,9 @@ func (s *IngestionService) Stop() {
 
 	if s.publisher != nil {
 		s.publisher.Stop() // Stop the message publisher
+	}
+	if s.unidentifiedDevicePublisher != nil { // Stop the new publisher
+		s.unidentifiedDevicePublisher.Stop()
 	}
 
 	if s.ErrorChan != nil {

@@ -27,11 +27,12 @@ func mockMetadataFetcherFunc(deviceEUI string, expectedEUI string, clientID, loc
 
 // --- MockMessagePublisher ---
 type MockMessagePublisher struct {
-	PublishedMessagesChan chan *EnrichedMessage
-	logger                zerolog.Logger
-	stopCalled            bool
-	mu                    sync.Mutex
-	PublishError          error // Optional: Set this to simulate publish errors
+	PublishedMessagesChan    chan *EnrichedMessage
+	UnidentifiedMessagesChan chan *UnidentifiedDeviceMessage
+	logger                   zerolog.Logger
+	stopCalled               bool
+	mu                       sync.Mutex
+	PublishError             error // Optional: Set this to simulate publish errors
 }
 
 func NewMockMessagePublisher(bufferSize int, logger zerolog.Logger) *MockMessagePublisher {
@@ -41,7 +42,7 @@ func NewMockMessagePublisher(bufferSize int, logger zerolog.Logger) *MockMessage
 	}
 }
 
-func (mp *MockMessagePublisher) Publish(_ context.Context, message *EnrichedMessage) error {
+func (mp *MockMessagePublisher) PublishEnriched(_ context.Context, message *EnrichedMessage) error {
 	mp.mu.Lock()
 	defer mp.mu.Unlock()
 	if mp.PublishError != nil {
@@ -56,6 +57,31 @@ func (mp *MockMessagePublisher) Publish(_ context.Context, message *EnrichedMess
 
 	select {
 	case mp.PublishedMessagesChan <- message:
+		mp.logger.Debug().Str("device_eui", message.DeviceEUI).Msg("MockMessagePublisher: Message sent to PublishedMessagesChan")
+		return nil
+	default:
+		// This case means the channel is full, simulating a downstream blockage
+		// or a test not consuming messages quickly enough.
+		mp.logger.Error().Str("device_eui", message.DeviceEUI).Msg("MockMessagePublisher: PublishedMessagesChan is full, message dropped")
+		return errors.New("mock publisher channel full")
+	}
+}
+
+func (mp *MockMessagePublisher) PublishUnidentified(ctx context.Context, message *UnidentifiedDeviceMessage) error {
+	mp.mu.Lock()
+	defer mp.mu.Unlock()
+	if mp.PublishError != nil {
+		mp.logger.Warn().Err(mp.PublishError).Msg("MockMessagePublisher: Simulating publish error")
+		return mp.PublishError
+	}
+
+	if mp.stopCalled {
+		mp.logger.Warn().Msg("MockMessagePublisher: Publish called after Stop")
+		return errors.New("publisher stopped")
+	}
+
+	select {
+	case mp.UnidentifiedMessagesChan <- message:
 		mp.logger.Debug().Str("device_eui", message.DeviceEUI).Msg("MockMessagePublisher: Message sent to PublishedMessagesChan")
 		return nil
 	default:
@@ -110,7 +136,8 @@ func TestIngestionService_SuccessfulProcessing(t *testing.T) {
 	cfg := DefaultIngestionServiceConfig()
 	cfg.NumProcessingWorkers = 1 // Easier to reason about for single message test
 	mp := NewMockMessagePublisher(cfg.NumProcessingWorkers, logger)
-	service := NewIngestionService(fetcher, mp, logger, cfg, nil)
+	up := NewMockMessagePublisher(cfg.NumProcessingWorkers, logger)
+	service := NewIngestionService(fetcher, mp, up, logger, cfg, nil)
 
 	service.Start()
 
@@ -165,7 +192,8 @@ func TestIngestionService_ParsingError(t *testing.T) {
 	cfg := DefaultIngestionServiceConfig()
 	cfg.NumProcessingWorkers = 1
 	mp := NewMockMessagePublisher(cfg.NumProcessingWorkers, logger)
-	service := NewIngestionService(fetcher, mp, logger, cfg, nil)
+	up := NewMockMessagePublisher(cfg.NumProcessingWorkers, logger)
+	service := NewIngestionService(fetcher, mp, up, logger, cfg, nil)
 	service.Start()
 
 	malformedJSON := []byte("this is not json")
@@ -204,7 +232,8 @@ func TestIngestionService_MetadataFetchingError(t *testing.T) {
 	cfg := DefaultIngestionServiceConfig()
 	cfg.NumProcessingWorkers = 1
 	mp := NewMockMessagePublisher(cfg.NumProcessingWorkers, logger)
-	service := NewIngestionService(fetcher, mp, logger, cfg, nil)
+	dp := NewMockMessagePublisher(cfg.NumProcessingWorkers, logger)
+	service := NewIngestionService(fetcher, mp, dp, logger, cfg, nil)
 	service.Start()
 
 	rawMsgBytes := makeSampleRawMQTTMsgBytes("DEV002", "TestData2", time.Now())
@@ -244,7 +273,8 @@ func TestIngestionService_StartStopMultipleWorkers(t *testing.T) {
 	cfg.OutputChanCapacity = 10
 
 	mp := NewMockMessagePublisher(cfg.NumProcessingWorkers, logger)
-	service := NewIngestionService(fetcher, mp, logger, cfg, nil)
+	up := NewMockMessagePublisher(cfg.NumProcessingWorkers, logger)
+	service := NewIngestionService(fetcher, mp, up, logger, cfg, nil)
 	service.Start()
 
 	numMessages := 5
@@ -322,7 +352,8 @@ func TestIngestionService_ShutdownWithPendingMessages(t *testing.T) {
 	cfg.InputChanCapacity = 5
 	cfg.OutputChanCapacity = 5
 	mp := NewMockMessagePublisher(cfg.NumProcessingWorkers, logger)
-	service := NewIngestionService(delayedFetcher, mp, logger, cfg, nil)
+	up := NewMockMessagePublisher(cfg.NumProcessingWorkers, logger)
+	service := NewIngestionService(delayedFetcher, mp, up, logger, cfg, nil)
 	service.Start()
 
 	// Send some messages

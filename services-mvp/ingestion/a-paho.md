@@ -5,7 +5,7 @@ So we'll have a struct IngestionService which has a chan for messages from the d
 In future we'll add to this using Paho but until we wire that in we want to test IngesstionService 
 ourselves by adding directly to the chan.
 
-the [response](paho-response.md) does mostly what we want - it starts a little weirdly,
+the [response](1-paho-response.md) does mostly what we want - it starts a little weirdly,
 saying it was sorry for jumping ahead to a paho implementation, even though it hadn't done anything with paho, 
 just added some errMessages to the original files.
 
@@ -33,7 +33,7 @@ when we have a paho client that works we'd like to think about an integration te
 to see if things are going down the right path in a more 'real world' environment.
 ````
 
-and the response goes into [paho-impl](paho-impl-response.md)
+and the response goes into [paho-impl](2-paho-impl-response.md)
 
 this is nice, the change to the service struct is minimal
 
@@ -57,4 +57,8 @@ Ok this looks good - there are minimal changes to the existing service.
 We've got a docker image of eclipse mosquito
 
 recommend how we structure the running of an integration test using mosquito to create the messages
+
+the reply goes into [paho-integration](3-paho-integration-response.md)
+
+now we'll move on to fleshing out the [pubsub](b-pubsub.md) part of the service
 

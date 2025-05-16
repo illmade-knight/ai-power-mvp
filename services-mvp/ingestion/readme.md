@@ -6,11 +6,12 @@ We'll explain what we're trying to achieve to the AI and look at its response
 
 Lets start with some basics.
 
+````aiprompt
 We will use GoLang as our microservice language.
-We will be deploying initially to GoogleCloud and using their pubsub service.
-We'll use CloudRun to deploy our microservice.
+Initially, we'll to GoogleCloud and using their pubsub service.
+We're using CloudRun to deploy our microservice.
 
-We're going to do something like test-driven-development but using Gemini to generate create our tests.
+We do something like test-driven-development but using Gemini to generate our tests.
 
 Let's explain our process for this.
 Instead of going straight ahead and connecting to an MQTT broker we'll break things down first.
@@ -23,6 +24,7 @@ the test harness.
 
 So to kick off our TDD create a sample sample struct for interpreting messages from an imaginary mqtt service.
 Then advise on some first steps for our Test Driven Development cycle.
+````
 
 ### AI Response
 
@@ -51,6 +53,46 @@ we'll use zerolog for our logging operation (though in general we like using cor
 
 ````
 
-so we clarified what we wanted. Let's follow the next section in [paho](paho.md)
+so we clarified what we wanted. 
+
+we'll start adding to the service breaking it down into each section
+
+1) [paho](a-paho.md)
+2) [pubsub](b-pubsub.md)
+3) [metadata](c-metadata.md)
+
+we've now integrated all the major parts, with normal tests and an integration test covering the service
+
+That's pretty good going I think.
+
+Again we can come back and do a more thorough review but we're on our MVP route and now lets
+go and first create a store for these enriched messages.
+
+## But first
+I've identified a problem with the approach so far and I want to check it with the AI.
+I have a solution in mind but want to see what the AI suggests too.
+
+````aipromt
+OK, everything is working now but I've just realized a flaw in our thinking
+
+We want to have the ability to record device data for audit but at the moment if we don't have a device in 
+DeviceMetadataFetcher we create an error, now that error may be just a data input error on our part, 
+so we want to make sure these messages are not lost.
+
+suggest a strategy for dealing with these
+````
+
+the [answer](1-problem-response.md) is in line with what I was thinking 
+so lets ask it to go ahead with option A for the MVP
+
+there was a small issue I didn't like so I asked it to change the MessagePublisher:
+
+````ai response
+Okay, I understand. You'd prefer the MessagePublisher interface to have more specific methods for publishing EnrichedMessage and UnidentifiedDeviceMessage types directly, rather than a generic method that takes []byte. This makes the interface more type-safe and clearly defines the intent.
+
+I will update the MessagePublisher interface and its GooglePubSubPublisher implementation in the Canvas accordingly. The IngestionService.processSingleMessage method will also be updated to use these new, more specific publishing methods.
+````
+
+
 
 

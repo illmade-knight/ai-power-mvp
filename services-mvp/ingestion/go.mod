@@ -3,6 +3,7 @@ module github.com/illmade-knight/ai-power-mvp/services-mvp/ingestion
 go 1.23.0
 
 require (
+	cloud.google.com/go/firestore v1.18.0
 	cloud.google.com/go/pubsub v1.49.0
 	github.com/eclipse/paho.mqtt.golang v1.5.0
 	github.com/google/go-cmp v0.7.0
@@ -18,6 +19,7 @@ require (
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
 	cloud.google.com/go/compute/metadata v0.6.0 // indirect
 	cloud.google.com/go/iam v1.4.2 // indirect
+	cloud.google.com/go/longrunning v0.6.5 // indirect
 	dario.cat/mergo v1.0.1 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect

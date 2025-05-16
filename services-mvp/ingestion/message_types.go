@@ -33,6 +33,16 @@ type MQTTMessage struct {
 	MessageTimestamp time.Time `json:"message_timestamp"` // Timestamp from the MQTT message itself or when it was published
 }
 
+// UnidentifiedDeviceMessage is the structure for messages when metadata is not found.
+type UnidentifiedDeviceMessage struct {
+	DeviceEUI          string    `json:"device_eui"`
+	RawPayload         string    `json:"raw_payload"`
+	OriginalMQTTTime   time.Time `json:"original_mqtt_time,omitempty"`
+	LoRaWANReceivedAt  time.Time `json:"lorawan_received_at,omitempty"`
+	IngestionTimestamp time.Time `json:"ingestion_timestamp"`
+	ProcessingError    string    `json:"processing_error"` // e.g., "ErrMetadataNotFound"
+}
+
 // EnrichedMessage is what the ingestion service will produce to send to the next topic (e.g., for the decoder).
 // This includes the original raw payload and the added metadata.
 type EnrichedMessage struct {
