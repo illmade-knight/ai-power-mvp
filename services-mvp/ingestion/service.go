@@ -110,7 +110,6 @@ func (s *IngestionService) handleIncomingPahoMessage(client mqtt.Client, msg mqt
 func (s *IngestionService) processSingleMessage(ctx context.Context, rawMsg []byte, workerID int) {
 	s.logger.Debug().Int("worker_id", workerID).Int("msg_size_bytes", len(rawMsg)).Msg("Received raw message for processing")
 
-	log.Debug().Msg("single message")
 	mqttMsg, err := ParseMQTTMessage(rawMsg)
 	if err != nil {
 		s.logger.Error().

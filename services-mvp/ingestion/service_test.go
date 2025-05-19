@@ -36,9 +36,11 @@ type MockMessagePublisher struct {
 }
 
 func NewMockMessagePublisher(bufferSize int, logger zerolog.Logger) *MockMessagePublisher {
+	logger.Debug().Int("bufferSize", bufferSize).Msg("NewMockMessagePublisher")
 	return &MockMessagePublisher{
-		PublishedMessagesChan: make(chan *EnrichedMessage, bufferSize),
-		logger:                logger,
+		PublishedMessagesChan:    make(chan *EnrichedMessage, bufferSize),
+		UnidentifiedMessagesChan: make(chan *UnidentifiedDeviceMessage, bufferSize),
+		logger:                   logger,
 	}
 }
 
@@ -88,7 +90,7 @@ func (mp *MockMessagePublisher) PublishUnidentified(ctx context.Context, message
 		// This case means the channel is full, simulating a downstream blockage
 		// or a test not consuming messages quickly enough.
 		mp.logger.Error().Str("device_eui", message.DeviceEUI).Msg("MockMessagePublisher: PublishedMessagesChan is full, message dropped")
-		return errors.New("mock publisher channel full")
+		return errors.New("mock unidentified publisher channel full")
 	}
 }
 
@@ -231,8 +233,8 @@ func TestIngestionService_MetadataFetchingError(t *testing.T) {
 	fetcher := mockMetadataFetcherFunc("DEV002", "DEV002", "", "", "", ErrMetadataNotFound)
 	cfg := DefaultIngestionServiceConfig()
 	cfg.NumProcessingWorkers = 1
-	mp := NewMockMessagePublisher(cfg.NumProcessingWorkers, logger)
-	dp := NewMockMessagePublisher(cfg.NumProcessingWorkers, logger)
+	mp := NewMockMessagePublisher(cfg.InputChanCapacity, logger)
+	dp := NewMockMessagePublisher(cfg.InputChanCapacity, logger)
 	service := NewIngestionService(fetcher, mp, dp, logger, cfg, nil)
 	service.Start()
 
@@ -272,8 +274,8 @@ func TestIngestionService_StartStopMultipleWorkers(t *testing.T) {
 	cfg.InputChanCapacity = 10
 	cfg.OutputChanCapacity = 10
 
-	mp := NewMockMessagePublisher(cfg.NumProcessingWorkers, logger)
-	up := NewMockMessagePublisher(cfg.NumProcessingWorkers, logger)
+	mp := NewMockMessagePublisher(cfg.InputChanCapacity, logger)
+	up := NewMockMessagePublisher(cfg.InputChanCapacity, logger)
 	service := NewIngestionService(fetcher, mp, up, logger, cfg, nil)
 	service.Start()
 
@@ -329,8 +331,9 @@ func TestIngestionService_StartStopMultipleWorkers(t *testing.T) {
 	if !strings.Contains(logOutput, "Stopping IngestionService...") || !strings.Contains(logOutput, "IngestionService stopped") {
 		t.Errorf("Missing service stop logs. Logs: %s", logOutput)
 	}
-	if strings.Count(logOutput, "Starting processing worker") != cfg.NumProcessingWorkers {
-		t.Errorf("Expected %d worker start logs, got different. Logs: %s", cfg.NumProcessingWorkers, logOutput)
+	startWorkers := strings.Count(logOutput, "Starting processing worker")
+	if startWorkers != cfg.NumProcessingWorkers {
+		t.Errorf("Expected %d worker start logs, got different %d. Logs: %s", cfg.NumProcessingWorkers, startWorkers, logOutput)
 	}
 }
 
@@ -351,8 +354,8 @@ func TestIngestionService_ShutdownWithPendingMessages(t *testing.T) {
 	cfg.NumProcessingWorkers = 2
 	cfg.InputChanCapacity = 5
 	cfg.OutputChanCapacity = 5
-	mp := NewMockMessagePublisher(cfg.NumProcessingWorkers, logger)
-	up := NewMockMessagePublisher(cfg.NumProcessingWorkers, logger)
+	mp := NewMockMessagePublisher(cfg.InputChanCapacity, logger)
+	up := NewMockMessagePublisher(cfg.InputChanCapacity, logger)
 	service := NewIngestionService(delayedFetcher, mp, up, logger, cfg, nil)
 	service.Start()
 

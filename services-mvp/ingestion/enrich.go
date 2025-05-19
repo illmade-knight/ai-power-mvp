@@ -21,8 +21,8 @@ func EnrichMQTTData(
 		logger.Error().Msg("MQTTMessage is missing DeviceEUI for enrichment")
 		return nil, ErrInvalidMessage
 	}
-	// Potentially add more validation for mqttMsg.RawPayload if it's critical for enrichment itself
-
+	// AI: Potentially add more validation for mqttMsg.RawPayload if it's critical for enrichment itself
+	// Human Response: this should never be the case - we're only enriching with MetaData at this stage
 	clientID, locationID, category, err := fetcher(mqttMsg.DeviceInfo.DeviceEUI)
 	if err != nil {
 		logger.Error().
@@ -34,6 +34,7 @@ func EnrichMQTTData(
 		return nil, err
 	}
 
+	// Human note - we'll come back to look at the real metadata we want later but this is a good start
 	enrichedMsg := &EnrichedMessage{
 		RawPayload:         mqttMsg.RawPayload,
 		DeviceEUI:          mqttMsg.DeviceInfo.DeviceEUI,
@@ -45,8 +46,5 @@ func EnrichMQTTData(
 		IngestionTimestamp: time.Now().UTC(),
 	}
 
-	logger.Debug().
-		Str("device_eui", enrichedMsg.DeviceEUI).
-		Msg("Successfully enriched MQTT message")
 	return enrichedMsg, nil
 }
