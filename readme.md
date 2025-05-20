@@ -10,9 +10,21 @@ Of course that's not how you think of a product
 Instead let's define an overall 'vision' and start to break it down into parts.
 Then maybe we get back to TDD but with it being led by the overall 'vision'
 
-## The big picture
+The current state is evolving - at present we have 3 microservices 
+1) ingestion from devices
+2) storage of raw device messages in slow recall format for audit
+3) storage of decoded device messages in google's BigQuery for analysis
+
+we'll keep an evaluation of the overall process in [current state](current.md)
+
+here we'll set out the:
+
+## Big picture
 
 We'll outline a scenario and then role play through the entire lifecycle of a solution.
+The AI (Gemini in our case but we can experiment with others) gets to see all of this 
+Building the context is important for the agent and we find that as we progress the agent gets
+better at anticipating our requirements (with a few nudges).
 
 ## Role play
 
