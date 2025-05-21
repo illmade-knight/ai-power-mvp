@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package servicemanager.protos.telemetry; // Protobuf package
+
+import "google/protobuf/timestamp.proto";
+
+// Go package option updated for your repository structure.
+// This will generate Go code in a package named 'telemetrypb'
+// under 'github.com/illmade-knight/ai-power-mvp/gen/go/protos/telemetry'.
+// Adjust the path and package name if your preferred output structure is different.
+option go_package = "github.com/illmade-knight/ai-power-mvp/gen/go/protos/telemetry;telemetrypb";
+
+// MeterReading represents the structured meter reading data after decoding.
+message MeterReading {
+  string uid = 1 ; // BigQuery: uid
+  float reading = 2; // BigQuery: reading
+  float average_current = 3; // BigQuery: average_current
+  float max_current = 4; // BigQuery: max_current
+  float max_voltage = 5; // BigQuery: max_voltage
+  float average_voltage = 6; // BigQuery: average_voltage
+  string device_eui = 7; // BigQuery: device_eui
+  string client_id = 8; // BigQuery: client_id
+  string location_id = 9; // BigQuery: location_id
+  string device_category = 10; // BigQuery: device_category
+  google.protobuf.Timestamp original_mqtt_time = 11; // BigQuery: original_mqtt_time
+  google.protobuf.Timestamp upstream_ingestion_timestamp = 12; // BigQuery: upstream_ingestion_timestamp
+  google.protobuf.Timestamp processed_timestamp = 13; // BigQuery: processed_timestamp
+  string device_type = 14; // BigQuery: device_type
+}

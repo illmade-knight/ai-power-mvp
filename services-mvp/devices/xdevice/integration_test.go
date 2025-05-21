@@ -5,13 +5,14 @@ package xdevice
 import (
 	"bytes"
 	"context"
+	"net/http"
+
 	// "encoding/binary" // No longer needed here if createValidTestHexPayload is external
 	// "encoding/hex"    // No longer needed here
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http" // Import for custom http.Client
-	"os"       // Needed for os.Getenv in the new helper
+	"os" // Needed for os.Getenv in the new helper
 	// "math"            // No longer needed here
 	"strings"
 	"testing"
@@ -58,18 +59,19 @@ const (
 func newEmulatorBigQueryClient(ctx context.Context, t *testing.T, projectID string) *bigquery.Client {
 	t.Helper()
 
-	emulatorRESTHost := os.Getenv("BIGQUERY_API_ENDPOINT") // This should be set by t.Setenv in the calling test
-	require.NotEmpty(t, emulatorRESTHost, "BIGQUERY_API_ENDPOINT env var must be set before calling newEmulatorBigQueryClient")
+	emulatorHost := os.Getenv("BIGQUERY_API_ENDPOINT") // This should be set by t.Setenv in the calling test
+	//emulatorHost := os.Getenv("BIGQUERY_EMULATOR_HOST") // This should be set by t.Setenv in the calling test
+	require.NotEmpty(t, emulatorHost, "BIGQUERY_API_ENDPOINT env var must be set before calling newEmulatorBigQueryClient")
 	require.NotEmpty(t, projectID, "projectID must be set for newEmulatorBigQueryClient")
 
 	clientOpts := []option.ClientOption{
-		option.WithEndpoint(emulatorRESTHost), // Point to the REST endpoint
+		option.WithEndpoint(emulatorHost), // Point to the REST/grpc endpoint
 		option.WithoutAuthentication(),
 		option.WithHTTPClient(&http.Client{}), // Use a plain http.Client to force HTTP
 	}
 
 	client, err := bigquery.NewClient(ctx, projectID, clientOpts...)
-	require.NoError(t, err, "newEmulatorBigQueryClient: Failed to create BigQuery client. RESTHost: %s", emulatorRESTHost)
+	require.NoError(t, err, "newEmulatorBigQueryClient: Failed to create BigQuery client. EmulatorHost: %s", emulatorHost)
 	return client
 }
 
