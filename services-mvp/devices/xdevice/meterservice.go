@@ -165,25 +165,16 @@ func (s *ProcessingService) processConsumedMessage(msg ConsumedMessage, workerID
 
 	// Create the generic MeterReading struct
 	// The function NewMeterReading is assumed to be from the xdevice package (xdevice_bq_inserter.go)
-	meterReading := NewMeterReading(
-		decodedPayload.UID,
-		decodedPayload.Reading,
-		decodedPayload.AverageCurrent,
-		decodedPayload.MaxCurrent,
-		decodedPayload.MaxVoltage,
-		decodedPayload.AverageVoltage,
-		upstreamMsg,
-		"XDevice", // DeviceType - This might need to be more dynamic if the service handles multiple types
-	)
+	meterReading := NewMeterReading(upstreamMsg, *decodedPayload)
 
 	insertCtx, cancelInsert := context.WithTimeout(s.shutdownCtx, 30*time.Second)
 	defer cancelInsert()
 
 	if err := s.inserter.Insert(insertCtx, meterReading); err != nil {
-		s.logger.Error().Err(err).Str("msg_id", msg.ID).Str("uid", meterReading.UID).Msg("Failed to insert meter reading, Nacking.")
+		s.logger.Error().Err(err).Str("msg_id", msg.ID).Str("uid", meterReading.Uid).Msg("Failed to insert meter reading, Nacking.")
 		msg.Nack()
 	} else {
-		s.logger.Debug().Str("msg_id", msg.ID).Str("uid", meterReading.UID).Msg("Meter reading processed and inserted, Acking.")
+		s.logger.Debug().Str("msg_id", msg.ID).Str("uid", meterReading.Uid).Msg("Meter reading processed and inserted, Acking.")
 		msg.Ack()
 	}
 }

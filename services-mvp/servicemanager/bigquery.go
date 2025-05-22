@@ -11,7 +11,7 @@ import (
 	// and telemetrypb is correctly imported by MeterReadingBQWrapper or here if needed.
 	// If MeterReadingBQWrapper is in a different sub-package, adjust import.
 	// For this example, we assume MeterReadingBQWrapper is accessible.
-	// telemetrypb "github.com/illmade-knight/ai-power-mvp/gen/go/protos/telemetry"
+	telemetry "github.com/illmade-knight/ai-power-mvp/gen/go/protos/telemetry"
 	// "google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -80,13 +80,6 @@ var _ BQTable = &bqTableClientAdapter{}
 var _ BQDataset = &bqDatasetClientAdapter{}
 var _ BQClient = &bqClientAdapter{}
 
-// MeterReadingBQWrapper is assumed to be defined in bqinfer.go in the same package:
-// type MeterReadingBQWrapper struct {
-// 	*telemetrypb.MeterReading
-// }
-// func (s *MeterReadingBQWrapper) Save() (map[string]bigquery.Value, string, error) { ... }
-// var _ bigquery.ValueSaver = &MeterReadingBQWrapper{}
-
 // BigQueryManager handles the creation and deletion of BigQuery datasets and tables.
 type BigQueryManager struct {
 	client         BQClient
@@ -104,8 +97,7 @@ func NewBigQueryManager(client BQClient, logger zerolog.Logger, knownSchemas map
 	}
 	// Register the MeterReadingBQWrapper for schema inference.
 	// The key MUST match exactly what's in the YAML's schema_source_identifier.
-	// This assumes MeterReadingBQWrapper is defined in the servicemanager package (e.g., from bqinfer.go).
-	knownSchemas["github.com/illmade-knight/ai-power-mvp/gen/go/protos/telemetry.MeterReading"] = &MeterReadingBQWrapper{}
+	knownSchemas["github.com/illmade-knight/ai-power-mvp/gen/go/protos/telemetry.MeterReading"] = &telemetry.MeterReadingBQWrapper{}
 
 	return &BigQueryManager{
 		client:         client,

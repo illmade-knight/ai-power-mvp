@@ -5,6 +5,7 @@ package servicemanager
 import (
 	"context"
 	"fmt"
+	telemetry "github.com/illmade-knight/ai-power-mvp/gen/go/protos/telemetry"
 	"net/http"
 	"os"
 	"strings"
@@ -261,7 +262,7 @@ resources:
 		assert.ElementsMatch(t, yamlClusteringFields, tableMeta.Clustering.Fields, "Clustering fields mismatch")
 
 		// Verify schema field names are now snake_case because MeterReadingBQWrapper is used
-		tempSaver := MeterReadingBQWrapper{} // Assumes this is defined in servicemanager (e.g. bqinfer.go)
+		tempSaver := telemetry.MeterReadingBQWrapper{} // Assumes this is defined in servicemanager (e.g. bqinfer.go)
 		expectedSchemaMap, _, _ := tempSaver.Save()
 
 		actualSchemaFieldNames := make(map[string]bool)

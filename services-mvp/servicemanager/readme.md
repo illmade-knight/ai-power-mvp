@@ -19,3 +19,10 @@ For the test environment we also want it to be able to tear down those resources
 (for production we either want this to have more security constraints and not be easy to do).
 
 What do you think of this idea and how would you begin to implement it?
+
+[ressponse](response.md)
+
+this turned out to be one of the more challenging uses of Gemini - 
+I thought I had a solution for the problems encountered in the xdevice Integration test but 
+the adjustments to how I approached the context window didn't work and instead uncovered more 
+problems with how to 'talk' to the agent and build understanding

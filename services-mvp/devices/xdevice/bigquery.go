@@ -4,6 +4,7 @@ import (
 	"cloud.google.com/go/bigquery"
 	"context"
 	"fmt"
+	telemetry "github.com/illmade-knight/ai-power-mvp/gen/go/protos/telemetry"
 	"github.com/rs/zerolog"
 	"google.golang.org/api/option"
 	"os"
@@ -113,7 +114,7 @@ func NewBigQueryInserter(
 	if err != nil {
 		if strings.Contains(err.Error(), "notFound") {
 			logger.Warn().Str("dataset", cfg.DatasetID).Str("table", cfg.TableID).Msg("BigQuery table not found. Attempting to create with inferred schema from MeterReading.")
-			inferredSchema, inferErr := bigquery.InferSchema(MeterReading{})
+			inferredSchema, inferErr := bigquery.InferSchema(telemetry.MeterReadingBQWrapper{})
 			if inferErr != nil {
 				// client.Close() // Client lifecycle is managed by the caller now
 				return nil, fmt.Errorf("failed to infer schema for MeterReading: %w", inferErr)
@@ -150,10 +151,11 @@ func NewBigQueryInserter(
 }
 
 // Insert streams a single MeterReading to BigQuery.
-func (i *BigQueryInserter) Insert(ctx context.Context, reading MeterReading) error {
-	itemsToInsert := []*MeterReading{&reading}
+func (i *BigQueryInserter) Insert(ctx context.Context, r *telemetry.MeterReading) error {
+	w := telemetry.WrapMeterReadingForBQ(r)
+	itemsToInsert := []*telemetry.MeterReadingBQWrapper{w}
 	if err := i.inserter.Put(ctx, itemsToInsert); err != nil {
-		i.logger.Error().Err(err).Str("uid", reading.UID).Str("device_eui", reading.DeviceEUI).Msg("Failed to insert row into BigQuery")
+		i.logger.Error().Err(err).Str("uid", w.Uid).Str("device_eui", w.DeviceEui).Msg("Failed to insert row into BigQuery")
 		if multiErr, ok := err.(bigquery.PutMultiError); ok {
 			for _, rowErr := range multiErr {
 				i.logger.Error().Str("row_index", fmt.Sprintf("%d", rowErr.RowIndex)).Msgf("BigQuery insert error for row: %v", rowErr.Errors)
@@ -161,7 +163,7 @@ func (i *BigQueryInserter) Insert(ctx context.Context, reading MeterReading) err
 		}
 		return fmt.Errorf("bigquery Inserter.Put: %w", err)
 	}
-	i.logger.Debug().Str("uid", reading.UID).Str("device_eui", reading.DeviceEUI).Msg("Successfully inserted row into BigQuery")
+	i.logger.Debug().Str("uid", w.Uid).Str("device_eui", w.DeviceEui).Msg("Successfully inserted row into BigQuery")
 	return nil
 }
 

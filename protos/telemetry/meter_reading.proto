@@ -11,6 +11,7 @@ import "google/protobuf/timestamp.proto";
 option go_package = "github.com/illmade-knight/ai-power-mvp/gen/go/protos/telemetry;telemetrypb";
 
 // MeterReading represents the structured meter reading data after decoding.
+// we can have different languages saving to services e.g BigQuery - save our preferred output to auto gen file in comment
 message MeterReading {
   string uid = 1 ; // BigQuery: uid
   float reading = 2; // BigQuery: reading

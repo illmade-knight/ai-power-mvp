@@ -6,6 +6,7 @@ to ignore
 1) hallucinations 
 2) context
 3) looping
+4) session loss
 
 ### Hallucinations
 At times the agent tells us things that aren't true - 
@@ -97,3 +98,8 @@ and a few prompts later it goes ahead and edits the func
 again it's human like response fools us into thinking it really knows what we're asking
 
 it doesn't
+
+### Session loss
+
+your entire context can be lost - now Gemini doesn't know anything about your problem and you
+have to think about how to restart the interactions with the agent

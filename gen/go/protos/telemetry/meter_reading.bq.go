@@ -1,12 +1,47 @@
-package servicemanager
+package telemetrypb
 
 import (
 	"cloud.google.com/go/bigquery"
-	//telemetrypb "github.com/illmade-knight/gen/go/protos/telemetry"
 	"time"
 )
 
-// --- Wrapper struct implementing bigquery.ValueSaver ---
+// --- Wrapper struct implementing bigquery.ValueSaver
+// we get a go struct fom pb but to use it in BigQuery etc we want to adjust it without editing the auto get file
+//---
+
+func WrapMeterReadingForBQ(r *MeterReading) *MeterReadingBQWrapper {
+	w := MeterReadingBQWrapper{
+		Uid:            r.Uid,
+		Reading:        r.Reading,
+		AverageCurrent: r.AverageCurrent,
+		MaxCurrent:     r.MaxCurrent,
+		MaxVoltage:     r.MaxVoltage,
+		AverageVoltage: r.AverageVoltage,
+		DeviceEui:      r.DeviceEui,
+		ClientId:       r.ClientId,
+		LocationId:     r.LocationId,
+		DeviceCategory: r.DeviceCategory,
+		DeviceType:     r.DeviceType,
+	}
+
+	// Handle protobuf Timestamps, converting to time.Time for BigQuery
+	// If s.MeterReading was just initialized to zero, these timestamp fields will be nil,
+	// and their corresponding entries in the 'row' map will remain nil (or become time.Time{} if BQ requires non-nil).
+	// For schema inference, time.Time{} is fine. For actual data, nil is fine for nullable BQ TIMESTAMPs.
+	if r.OriginalMqttTime != nil && r.OriginalMqttTime.IsValid() {
+		w.OriginalMqttTime = r.OriginalMqttTime.AsTime()
+	}
+
+	if r.UpstreamIngestionTimestamp != nil && r.UpstreamIngestionTimestamp.IsValid() {
+		w.UpstreamIngestionTimestamp = r.UpstreamIngestionTimestamp.AsTime()
+	}
+
+	if r.ProcessedTimestamp != nil && r.ProcessedTimestamp.IsValid() {
+		w.ProcessedTimestamp = r.ProcessedTimestamp.AsTime()
+	}
+
+	return &w
+}
 
 // MeterReadingBQWrapper wraps the auto-generated telemetrypb.MeterReading
 // to provide a Save method for BigQuery, ensuring snake_case column names for schema inference.
@@ -50,28 +85,6 @@ func (s *MeterReadingBQWrapper) Save() (row map[string]bigquery.Value, insertID 
 		"upstream_ingestion_timestamp": s.UpstreamIngestionTimestamp, // Initialize to nil, update below if valid
 		"processed_timestamp":          s.ProcessedTimestamp,         // Initialize to nil, update below if valid
 	}
-	//
-	//// Handle protobuf Timestamps, converting to time.Time for BigQuery
-	//// If s.MeterReading was just initialized to zero, these timestamp fields will be nil,
-	//// and their corresponding entries in the 'row' map will remain nil (or become time.Time{} if BQ requires non-nil).
-	//// For schema inference, time.Time{} is fine. For actual data, nil is fine for nullable BQ TIMESTAMPs.
-	//if s.OriginalMqttTime != nil && s.OriginalMqttTime.IsValid() {
-	//	row["original_mqtt_time"] = s.OriginalMqttTime.AsTime()
-	//} else if s.MeterReading.OriginalMqttTime == nil { // Explicitly handle nil for schema inference if needed
-	//	row["original_mqtt_time"] = time.Time{}
-	//}
-	//
-	//if s.UpstreamIngestionTimestamp != nil && s.UpstreamIngestionTimestamp.IsValid() {
-	//	row["upstream_ingestion_timestamp"] = s.UpstreamIngestionTimestamp.AsTime()
-	//} else if s.MeterReading.UpstreamIngestionTimestamp == nil {
-	//	row["upstream_ingestion_timestamp"] = time.Time{}
-	//}
-	//
-	//if s.ProcessedTimestamp != nil && s.ProcessedTimestamp.IsValid() {
-	//	row["processed_timestamp"] = s.ProcessedTimestamp.AsTime()
-	//} else if s.MeterReading.ProcessedTimestamp == nil {
-	//	row["processed_timestamp"] = time.Time{}
-	//}
 
 	return row, "", nil
 }

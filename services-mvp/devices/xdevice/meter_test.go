@@ -28,27 +28,18 @@ func TestNewMeterReading(t *testing.T) {
 	}
 	deviceType := "XDevice"
 
-	meterReading := NewMeterReading(
-		decodedPayload.UID,
-		decodedPayload.Reading,
-		decodedPayload.AverageCurrent,
-		decodedPayload.MaxCurrent,
-		decodedPayload.MaxVoltage,
-		decodedPayload.AverageVoltage,
-		upstreamMeta,
-		deviceType,
-	)
+	meterReading := NewMeterReading(upstreamMeta, decodedPayload)
 
-	assert.Equal(t, decodedPayload.UID, meterReading.UID)
+	assert.Equal(t, decodedPayload.UID, meterReading.Uid)
 	assert.Equal(t, decodedPayload.Reading, meterReading.Reading)
 	assert.Equal(t, decodedPayload.AverageCurrent, meterReading.AverageCurrent)
-	assert.Equal(t, upstreamMeta.DeviceEUI, meterReading.DeviceEUI)
-	assert.Equal(t, upstreamMeta.ClientID, meterReading.ClientID)
-	assert.Equal(t, upstreamMeta.LocationID, meterReading.LocationID)
+	assert.Equal(t, upstreamMeta.DeviceEUI, meterReading.DeviceEui)
+	assert.Equal(t, upstreamMeta.ClientID, meterReading.ClientId)
+	assert.Equal(t, upstreamMeta.LocationID, meterReading.LocationId)
 	assert.Equal(t, upstreamMeta.DeviceCategory, meterReading.DeviceCategory)
-	assert.Equal(t, upstreamMeta.OriginalMQTTTime, meterReading.OriginalMQTTTime)
-	assert.Equal(t, upstreamMeta.IngestionTimestamp, meterReading.UpstreamIngestionTimestamp)
+	assert.Equal(t, upstreamMeta.OriginalMQTTTime, meterReading.OriginalMqttTime.AsTime())
+	assert.Equal(t, upstreamMeta.IngestionTimestamp, meterReading.UpstreamIngestionTimestamp.AsTime())
 	assert.Equal(t, deviceType, meterReading.DeviceType)
-	assert.False(t, meterReading.ProcessedTimestamp.IsZero(), "ProcessedTimestamp should be set")
-	assert.WithinDuration(t, time.Now().UTC(), meterReading.ProcessedTimestamp, 5*time.Second, "ProcessedTimestamp should be recent")
+	assert.False(t, meterReading.ProcessedTimestamp.AsTime().IsZero(), "ProcessedTimestamp should be set")
+	assert.WithinDuration(t, time.Now().UTC(), meterReading.ProcessedTimestamp.AsTime(), 5*time.Second, "ProcessedTimestamp should be recent")
 }

@@ -3,6 +3,7 @@ package xdevice
 import (
 	"context"
 	"encoding/json"
+	telemetry "github.com/illmade-knight/ai-power-mvp/gen/go/protos/telemetry"
 	"testing"
 	"time"
 
@@ -64,7 +65,7 @@ type MockProcessingDecodedDataInserter struct {
 	mock.Mock
 }
 
-func (m *MockProcessingDecodedDataInserter) Insert(ctx context.Context, reading MeterReading) error {
+func (m *MockProcessingDecodedDataInserter) Insert(ctx context.Context, reading *telemetry.MeterReading) error {
 	args := m.Called(ctx, reading)
 	return args.Error(0)
 }
@@ -151,8 +152,8 @@ func TestProcessingService_ProcessConsumedMessage_SuccessfulDecodeAndInsert(t *t
 	mockConsumer.On("Messages").Return(mockConsumer.MessagesChan)
 	mockConsumer.On("Stop").Return(nil)
 	mockConsumer.On("Done").Return(mockConsumer.DoneChan)
-	mockInserter.On("Insert", mock.Anything, mock.MatchedBy(func(mr MeterReading) bool {
-		return mr.UID == "X001" && mr.Reading == 10.5 && mr.DeviceEUI == "EUI_X001" && mr.ClientID == "ClientX" && mr.DeviceType == "XDevice"
+	mockInserter.On("Insert", mock.Anything, mock.MatchedBy(func(mr *telemetry.MeterReading) bool {
+		return mr.Uid == "X001" && mr.Reading == 10.5 && mr.DeviceEui == "EUI_X001" && mr.ClientId == "ClientX" && mr.DeviceType == "XDevice"
 	})).Return(nil).Once()
 	mockInserter.On("Close").Return(nil).Once() // Added .Once() here
 

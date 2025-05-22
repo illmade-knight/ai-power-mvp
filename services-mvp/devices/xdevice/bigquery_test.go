@@ -3,8 +3,8 @@ package xdevice
 import (
 	"context"
 	"errors"
+	telemetry "github.com/illmade-knight/ai-power-mvp/gen/go/protos/telemetry"
 	"testing"
-	"time"
 
 	// "cloud.google.com/go/bigquery" // No longer needed for these specific unit tests of the interface user
 	"github.com/rs/zerolog"
@@ -20,7 +20,7 @@ type MockDecodedDataInserter struct {
 }
 
 // Insert provides a mock function with given fields: ctx, reading
-func (m *MockDecodedDataInserter) Insert(ctx context.Context, reading MeterReading) error {
+func (m *MockDecodedDataInserter) Insert(ctx context.Context, reading *telemetry.MeterReading) error {
 	args := m.Called(ctx, reading)
 	return args.Error(0)
 }
@@ -98,15 +98,15 @@ func NewExampleProcessor(inserter DecodedDataInserter, logger zerolog.Logger) *E
 }
 
 // ProcessAndStore simulates processing a decoded payload and storing it.
-func (p *ExampleProcessor) ProcessAndStore(ctx context.Context, reading MeterReading) error {
-	p.logger.Info().Str("uid", reading.UID).Msg("Processing meter reading for storage")
+func (p *ExampleProcessor) ProcessAndStore(ctx context.Context, reading *telemetry.MeterReading) error {
+	p.logger.Info().Str("uid", reading.Uid).Msg("Processing meter reading for storage")
 	// Potentially more logic here before inserting...
 	err := p.inserter.Insert(ctx, reading)
 	if err != nil {
-		p.logger.Error().Err(err).Str("uid", reading.UID).Msg("Failed to store meter reading")
+		p.logger.Error().Err(err).Str("uid", reading.Uid).Msg("Failed to store meter reading")
 		return err
 	}
-	p.logger.Info().Str("uid", reading.UID).Msg("Meter reading stored successfully")
+	p.logger.Info().Str("uid", reading.Uid).Msg("Meter reading stored successfully")
 	return nil
 }
 
@@ -126,23 +126,7 @@ func TestExampleProcessor_ProcessAndStore(t *testing.T) {
 	// Create the component we want to test, injecting the mock
 	processor := NewExampleProcessor(mockInserter, logger)
 
-	testReading := NewMeterReading( // Using the existing helper
-		"UID123",
-		10.5,
-		1.1,
-		2.2,
-		230.0,
-		229.5,
-		ConsumedUpstreamMessage{
-			DeviceEUI:          "EUI_XYZ",
-			ClientID:           "ClientTest",
-			LocationID:         "LocationTest",
-			DeviceCategory:     "TestCategory",
-			OriginalMQTTTime:   time.Now().Add(-1 * time.Hour),
-			IngestionTimestamp: time.Now().Add(-30 * time.Minute),
-		},
-		"XDeviceTest",
-	)
+	testReading := &telemetry.MeterReading{}
 
 	t.Run("Successful insert", func(t *testing.T) {
 		// Use mock.Anything for the context argument for more robust matching.

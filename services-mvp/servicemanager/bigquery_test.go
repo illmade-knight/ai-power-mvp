@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	// Import your generated protobuf package
-	telemetrypb "github.com/illmade-knight/ai-power-mvp/gen/go/protos/telemetry"
+	telemetry "github.com/illmade-knight/ai-power-mvp/gen/go/protos/telemetry"
 )
 
 // --- Mock Implementations for BQClient, BQDataset, BQTable interfaces ---
@@ -112,7 +112,7 @@ func TestBigQueryManager_Setup(t *testing.T) {
 
 	// Schema for MeterReading (inferred from the proto-generated struct)
 	// This is used by the manager, so we need it for our Create mock's matcher if being specific.
-	meterReadingSchemaForMatcher, errInfer := bigquery.InferSchema((*telemetrypb.MeterReading)(nil))
+	meterReadingSchemaForMatcher, errInfer := bigquery.InferSchema((*telemetry.MeterReading)(nil))
 	require.NoError(t, errInfer)
 
 	testConfig := &TopLevelConfig{
