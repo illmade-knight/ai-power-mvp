@@ -15,7 +15,13 @@ The current state is evolving - at present we have 3 microservices
 2) storage of raw device messages in slow recall format for audit
 3) storage of decoded device messages in google's BigQuery for analysis
 
+And a [service manager](services-mvp/servicemanager) 
+which sets up elements for use by the other services - 
+in future we'll use it to monitor the services as well.
+
 we'll keep an evaluation of the overall process in [current state](current.md)
+
+and we'll also keep a record of [problems](problems.md) we encounter.
 
 here we'll set out the:
 

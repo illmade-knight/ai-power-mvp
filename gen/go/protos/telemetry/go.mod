@@ -1,4 +1,4 @@
-module github.com/illmade-knight/gen/go/protos/telemetry
+module github.com/illmade-knight/ai-power-mvp/gen/go/protos/telemetry
 
 go 1.23.0
 
