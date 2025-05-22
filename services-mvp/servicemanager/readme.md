@@ -26,3 +26,12 @@ this turned out to be one of the more challenging uses of Gemini -
 I thought I had a solution for the problems encountered in the xdevice Integration test but 
 the adjustments to how I approached the context window didn't work and instead uncovered more 
 problems with how to 'talk' to the agent and build understanding
+
+### recovery
+
+we lost our session and had to recover some context - 
+I resent the initial prompt and added all the go files so far - 
+then I added the microservice for storage and asked it to start work on 
+replicating what we'd done for pubsub and bigquery with the focus now on storage
+
+[3](3.md)
