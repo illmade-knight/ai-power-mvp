@@ -1,0 +1,34 @@
+{
+  "serviceName": "xdevice-processing-service",
+  "environment": "test",
+  "gcpProjectId": "your-gcp-test-project-id-eu",
+  "publishesToTopics": [
+    {
+      "name": "projects/your-gcp-test-project-id-eu/topics/xdevice-decoded-readings",
+      "labels": {
+        "service-group": "processing",
+        "device-type": "xdevice",
+        "data-type": "decoded"
+      }
+    }
+  ],
+  "consumesFromSubscriptions": [
+    {
+      "name": "projects/your-gcp-test-project-id-eu/subscriptions/xdevice-processing-service-input-sub",
+      "topic": "projects/your-gcp-test-project-id-eu/topics/ingested-device-messages",
+      "ackDeadlineSeconds": 30,
+      "labels": {
+        "subscriber-service": "xdevice-processing"
+      }
+    }
+  ],
+  "accessesGCSBuckets": [],
+  "accessesBigQueryTables": [
+    {
+      "projectId": "your-gcp-test-project-id-eu",
+      "datasetId": "device_telemetry",
+      "tableId": "meter_readings",
+      "declaredAccess": ["xdevice-processing-service"]
+    }
+  ]
+}

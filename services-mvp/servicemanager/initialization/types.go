@@ -1,4 +1,4 @@
-package servicemanager
+package initialization
 
 // TopLevelConfig, EnvironmentSpec, ResourcesSpec remain the same
 

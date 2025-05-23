@@ -1,11 +1,12 @@
 //go:build integration
 
-package servicemanager
+package initialization
 
 import (
 	"context"
 	"fmt"
 	telemetry "github.com/illmade-knight/ai-power-mvp/gen/go/protos/telemetry"
+	"github.com/illmade-knight/ai-power-mvp/services-mvp/servicemanager"
 	"net/http"
 	"os"
 	"strings"
@@ -193,7 +194,7 @@ resources:
 		testSMBQDatasetID, testSMBQAnotherDatasetID,
 		testSMBQTableID, testSMBQDatasetID, yamlTimePartitioningField, yamlClusteringFields[0], yamlClusteringFields[1])
 
-	configFilePath := createManagerTestYAMLFile(t, yamlContent) // Assumes this helper is available in the package
+	configFilePath := servicemanager.createManagerTestYAMLFile(t, yamlContent) // Assumes this helper is available in the package
 
 	cfg, err := LoadAndValidateConfig(configFilePath)
 	require.NoError(t, err, "Failed to load and validate test config")

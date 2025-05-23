@@ -1,4 +1,4 @@
-package servicemanager
+package initialization
 
 import (
 	"cloud.google.com/go/bigquery"
@@ -106,11 +106,11 @@ func NewBigQueryManager(client BQClient, logger zerolog.Logger, knownSchemas map
 	}, nil
 }
 
-// getTargetProjectID, TopLevelConfig, etc. are assumed to be defined elsewhere in the package.
+// GetTargetProjectID, TopLevelConfig, etc. are assumed to be defined elsewhere in the package.
 
 // Setup creates all configured BigQuery datasets and tables for a given environment.
 func (m *BigQueryManager) Setup(ctx context.Context, cfg *TopLevelConfig, environment string) error {
-	targetProjectID, err := getTargetProjectID(cfg, environment)
+	targetProjectID, err := GetTargetProjectID(cfg, environment)
 	if err != nil {
 		return fmt.Errorf("BigQueryManager.Setup: %w", err)
 	}
@@ -263,7 +263,7 @@ func (m *BigQueryManager) loadTableSchema(tableCfg BigQueryTable) (bigquery.Sche
 
 // Teardown (remains the same)
 func (m *BigQueryManager) Teardown(ctx context.Context, cfg *TopLevelConfig, environment string) error {
-	targetProjectID, err := getTargetProjectID(cfg, environment)
+	targetProjectID, err := GetTargetProjectID(cfg, environment)
 	if err != nil {
 		return fmt.Errorf("BigQueryManager.Teardown: %w", err)
 	}

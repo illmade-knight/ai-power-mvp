@@ -1,4 +1,4 @@
-package servicemanager
+package initialization
 
 import (
 	"context"

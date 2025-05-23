@@ -1,4 +1,4 @@
-package ingestion
+package connectors
 
 import (
 	"cloud.google.com/go/pubsub" // Google Cloud Pub/Sub

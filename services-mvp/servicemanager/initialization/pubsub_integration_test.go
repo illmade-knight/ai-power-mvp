@@ -1,6 +1,6 @@
 //go:build integration
 
-package servicemanager
+package initialization
 
 import (
 	"context"

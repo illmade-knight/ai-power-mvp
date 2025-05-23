@@ -1,4 +1,4 @@
-package servicemanager
+package initialization
 
 import (
 	"cloud.google.com/go/bigquery" // Still needed for concrete types in mock returns/args

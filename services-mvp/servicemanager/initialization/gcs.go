@@ -1,4 +1,4 @@
-package servicemanager
+package initialization
 
 import (
 	"context"
@@ -101,7 +101,7 @@ func NewStorageManager(client GCSClient, logger zerolog.Logger) (*StorageManager
 
 // Setup creates or updates GCS buckets as defined in the configuration.
 func (sm *StorageManager) Setup(ctx context.Context, cfg *TopLevelConfig, environment string) error {
-	projectID, err := getTargetProjectID(cfg, environment)
+	projectID, err := GetTargetProjectID(cfg, environment)
 	if err != nil {
 		return fmt.Errorf("StorageManager.Setup: %w", err)
 	}
@@ -219,7 +219,7 @@ func (sm *StorageManager) Setup(ctx context.Context, cfg *TopLevelConfig, enviro
 
 // Teardown deletes GCS buckets as defined in the configuration.
 func (sm *StorageManager) Teardown(ctx context.Context, cfg *TopLevelConfig, environment string) error {
-	projectID, err := getTargetProjectID(cfg, environment)
+	projectID, err := GetTargetProjectID(cfg, environment)
 	if err != nil {
 		return fmt.Errorf("StorageManager.Teardown: %w", err)
 	}

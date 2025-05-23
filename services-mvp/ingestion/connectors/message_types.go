@@ -1,4 +1,4 @@
-package ingestion
+package connectors
 
 import (
 	"encoding/json"

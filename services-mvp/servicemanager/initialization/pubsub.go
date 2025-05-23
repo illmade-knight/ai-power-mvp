@@ -1,4 +1,4 @@
-package servicemanager
+package initialization
 
 import (
 	"context"
@@ -23,8 +23,8 @@ func NewPubSubManager(logger zerolog.Logger) *PubSubManager {
 	}
 }
 
-// getTargetProjectID determines the project ID to use based on the environment.
-func getTargetProjectID(cfg *TopLevelConfig, environment string) (string, error) {
+// GetTargetProjectID determines the project ID to use based on the environment.
+func GetTargetProjectID(cfg *TopLevelConfig, environment string) (string, error) {
 	if envSpec, ok := cfg.Environments[environment]; ok && envSpec.ProjectID != "" {
 		return envSpec.ProjectID, nil
 	}
@@ -36,7 +36,7 @@ func getTargetProjectID(cfg *TopLevelConfig, environment string) (string, error)
 
 // Setup creates all configured Pub/Sub topics and subscriptions for a given environment.
 func (m *PubSubManager) Setup(ctx context.Context, cfg *TopLevelConfig, environment string, clientOpts ...option.ClientOption) error {
-	projectID, err := getTargetProjectID(cfg, environment)
+	projectID, err := GetTargetProjectID(cfg, environment)
 	if err != nil {
 		return err
 	}
@@ -202,7 +202,7 @@ func (m *PubSubManager) setupSubscriptions(ctx context.Context, client *pubsub.C
 
 // Teardown deletes all configured Pub/Sub subscriptions and then topics for a given environment.
 func (m *PubSubManager) Teardown(ctx context.Context, cfg *TopLevelConfig, environment string, clientOpts ...option.ClientOption) error {
-	projectID, err := getTargetProjectID(cfg, environment)
+	projectID, err := GetTargetProjectID(cfg, environment)
 	if err != nil {
 		return err
 	}
