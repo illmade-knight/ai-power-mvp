@@ -5,6 +5,7 @@ package xdevice
 import (
 	"bytes"
 	"context"
+	telemetry "github.com/illmade-knight/ai-power-mvp/gen/go/protos/telemetry"
 	"net/http"
 
 	// "encoding/binary" // No longer needed here if createValidTestHexPayload is external
@@ -172,7 +173,7 @@ func setupBigQueryEmulatorForProcessingTest(t *testing.T, ctx context.Context) (
 	}
 
 	table := dataset.Table(testProcessingBigQueryTableID)
-	schema, err := bigquery.InferSchema(MeterReading{})
+	schema, err := bigquery.InferSchema(telemetry.MeterReading{})
 	require.NoError(t, err)
 	tableMeta := &bigquery.TableMetadata{Name: testProcessingBigQueryTableID, Schema: schema,
 		TimePartitioning: &bigquery.TimePartitioning{Type: bigquery.DayPartitioningType, Field: "original_mqtt_time"},
@@ -291,13 +292,13 @@ func TestProcessingService_Integration_FullFlow(t *testing.T) {
 
 	it, err := query.Read(ctx)
 	require.NoError(t, err)
-	var row MeterReading
+	var row telemetry.MeterReading
 	err = it.Next(&row)
 	if errors.Is(err, iterator.Done) {
 		t.Fatalf("No rows returned from BQ emulator for EUI %s. Logs:\n%s", testProcessingDeviceEUI, logBuf.String())
 	}
 	require.NoError(t, err)
-	assert.Equal(t, testProcessingDeviceUID, row.UID)
+	assert.Equal(t, testProcessingDeviceUID, row.Uid)
 	assert.InDelta(t, 123.45, row.Reading, 0.001)
 	assert.Equal(t, "XDevice", row.DeviceType)
 

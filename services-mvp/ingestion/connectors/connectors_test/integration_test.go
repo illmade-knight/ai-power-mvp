@@ -128,9 +128,7 @@ func setupPubSubEmulatorConnectors(t *testing.T, ctx context.Context, projectID,
 	emulatorHost = fmt.Sprintf("%s:%s", host, port.Port())
 	t.Logf("Pub/Sub emulator (connectors) started, host: %s", emulatorHost)
 
-	originalEmulatorHost := os.Getenv("PUBSUB_EMULATOR_HOST")
-	os.Setenv("PUBSUB_EMULATOR_HOST", emulatorHost)
-	defer os.Setenv("PUBSUB_EMULATOR_HOST", originalEmulatorHost)
+	t.Setenv("PUBSUB_EMULATOR_HOST", emulatorHost)
 
 	adminClient, err := pubsub.NewClient(ctx, projectID)
 	require.NoError(t, err, "Failed to create admin Pub/Sub client for emulator (connectors)")

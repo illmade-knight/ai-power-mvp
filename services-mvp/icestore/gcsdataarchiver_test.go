@@ -13,14 +13,14 @@ import (
 	"testing"
 	"time"
 
-	"cloud.google.com/go/storage" // Only for ObjectAttrs in mock
+	"cloud.google.com/go/storage" // Only for ObjectAttrs in Mock
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // --- Mock GCS Client Implementation ---
-type mockGCSWriter struct {
+type MockGCSWriter struct {
 	buf         bytes.Buffer
 	closed      bool
 	closeError  error
@@ -28,69 +28,69 @@ type mockGCSWriter struct {
 	ObjectAttrs *storage.ObjectAttrs
 }
 
-func (m *mockGCSWriter) Write(p []byte) (n int, err error) {
+func (m *MockGCSWriter) Write(p []byte) (n int, err error) {
 	if m.writeError != nil {
 		return 0, m.writeError
 	}
 	if m.closed {
-		return 0, errors.New("mockGCSWriter: already closed")
+		return 0, errors.New("MockGCSWriter: already closed")
 	}
 	return m.buf.Write(p)
 }
-func (m *mockGCSWriter) Close() error {
+func (m *MockGCSWriter) Close() error {
 	if m.closed {
-		return errors.New("mockGCSWriter: already closed (double close)")
+		return errors.New("MockGCSWriter: already closed (double close)")
 	}
 	m.closed = true
 	return m.closeError
 }
-func (m *mockGCSWriter) Attrs() *storage.ObjectAttrs {
+func (m *MockGCSWriter) Attrs() *storage.ObjectAttrs {
 	if m.ObjectAttrs == nil {
 		m.ObjectAttrs = &storage.ObjectAttrs{}
 	}
 	return m.ObjectAttrs
 }
-func (m *mockGCSWriter) Bytes() []byte { return m.buf.Bytes() }
+func (m *MockGCSWriter) Bytes() []byte { return m.buf.Bytes() }
 
-type mockGCSObjectHandle struct {
+type MockGCSObjectHandle struct {
 	name           string
-	bucket         *mockGCSBucketHandle
+	bucket         *MockGCSBucketHandle
 	newWriterFunc  func(ctx context.Context) GCSWriter
 	writerToReturn GCSWriter
 }
 
-func (m *mockGCSObjectHandle) NewWriter(ctx context.Context) GCSWriter {
+func (m *MockGCSObjectHandle) NewWriter(ctx context.Context) GCSWriter {
 	if m.newWriterFunc != nil {
 		return m.newWriterFunc(ctx)
 	}
 	if m.writerToReturn == nil {
-		m.writerToReturn = &mockGCSWriter{ObjectAttrs: &storage.ObjectAttrs{}}
+		m.writerToReturn = &MockGCSWriter{ObjectAttrs: &storage.ObjectAttrs{}}
 	}
 	return m.writerToReturn
 }
 
-type mockGCSBucketHandle struct {
+type MockGCSBucketHandle struct {
 	name       string
-	client     *mockGCSClient
+	client     *MockGCSClient
 	objectFunc func(name string) GCSObjectHandle
 }
 
-func (m *mockGCSBucketHandle) Object(name string) GCSObjectHandle {
+func (m *MockGCSBucketHandle) Object(name string) GCSObjectHandle {
 	if m.objectFunc != nil {
 		return m.objectFunc(name)
 	}
-	return &mockGCSObjectHandle{name: name, bucket: m}
+	return &MockGCSObjectHandle{name: name, bucket: m}
 }
 
-type mockGCSClient struct {
+type MockGCSClient struct {
 	bucketFunc func(name string) GCSBucketHandle
 }
 
-func (m *mockGCSClient) Bucket(name string) GCSBucketHandle {
+func (m *MockGCSClient) Bucket(name string) GCSBucketHandle {
 	if m.bucketFunc != nil {
 		return m.bucketFunc(name)
 	}
-	return &mockGCSBucketHandle{name: name, client: m}
+	return &MockGCSBucketHandle{name: name, client: m}
 }
 
 func newTestCombinedMsgBytesForTableTest(eui, locID, clientID, category, rawPayloadStr, processingErrorStr string, ts time.Time) []byte {
@@ -106,18 +106,18 @@ func newTestCombinedMsgBytesForTableTest(eui, locID, clientID, category, rawPayl
 func TestGCSDataArchiver_TableDrivenScenarios_V4(t *testing.T) {
 	logger := zerolog.Nop()
 	ctx := context.Background()
-	writtenObjects := make(map[string]*mockGCSWriter)
+	writtenObjects := make(map[string]*MockGCSWriter)
 	var writtenObjMu sync.Mutex
 
-	mockClient := &mockGCSClient{
+	mockClient := &MockGCSClient{
 		bucketFunc: func(bucketName string) GCSBucketHandle {
-			return &mockGCSBucketHandle{name: bucketName,
+			return &MockGCSBucketHandle{name: bucketName,
 				objectFunc: func(objectName string) GCSObjectHandle {
-					writer := &mockGCSWriter{ObjectAttrs: &storage.ObjectAttrs{}}
+					writer := &MockGCSWriter{ObjectAttrs: &storage.ObjectAttrs{}}
 					writtenObjMu.Lock()
 					writtenObjects[objectName] = writer
 					writtenObjMu.Unlock()
-					return &mockGCSObjectHandle{name: objectName, writerToReturn: writer}
+					return &MockGCSObjectHandle{name: objectName, writerToReturn: writer}
 				},
 			}
 		},
@@ -210,7 +210,7 @@ func TestGCSDataArchiver_TableDrivenScenarios_V4(t *testing.T) {
 			if tc.expectFlushOfThisBatchKey {
 				archiver.wg.Wait() // Wait for any async flush to complete
 				expectedObjectPathPrefix := config.ObjectPrefix + "/" + tc.expectedBatchKey
-				var flushedWriter *mockGCSWriter
+				var flushedWriter *MockGCSWriter
 				var flushedObjectName string
 				writtenObjMu.Lock()
 				for name, writer := range writtenObjects {
@@ -252,7 +252,7 @@ func TestGCSDataArchiver_TableDrivenScenarios_V4(t *testing.T) {
 		archiver.batchMap = make(map[string][]RawDataForArchival)
 		archiver.mu.Unlock()
 		writtenObjMu.Lock()
-		writtenObjects = make(map[string]*mockGCSWriter)
+		writtenObjects = make(map[string]*MockGCSWriter)
 		writtenObjMu.Unlock()
 
 		// Add one valid message that wouldn't trigger a flush by itself
@@ -270,7 +270,7 @@ func TestGCSDataArchiver_TableDrivenScenarios_V4(t *testing.T) {
 		archiver.wg.Wait()
 
 		expectedStopFlushPathPrefix := config.ObjectPrefix + "/2023/11/15/LOC_STOP"
-		var stopFlushedWriter *mockGCSWriter
+		var stopFlushedWriter *MockGCSWriter
 		writtenObjMu.Lock()
 		for name, writer := range writtenObjects {
 			if strings.HasPrefix(name, expectedStopFlushPathPrefix) {

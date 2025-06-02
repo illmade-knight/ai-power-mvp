@@ -22,7 +22,7 @@ import (
 
 // Helper to find a specific writer from the map, used for verification
 // It should find the writer whose name CONTAINS the expected path key, as UUID is appended.
-func findWriterForBatchKey(t *testing.T, writtenObjects map[string]*mockGCSWriter, expectedPathKeyPrefix string) (*mockGCSWriter, string) {
+func findWriterForBatchKey(t *testing.T, writtenObjects map[string]*MockGCSWriter, expectedPathKeyPrefix string) (*MockGCSWriter, string) {
 	for name, writer := range writtenObjects {
 		if strings.Contains(name, expectedPathKeyPrefix) {
 			return writer, name // Return the writer and its full object name
@@ -39,19 +39,19 @@ func TestGCSDataArchiver_TableDrivenScenarios(t *testing.T) {
 	logger := zerolog.Nop()
 	ctx := context.Background()
 
-	writtenObjects := make(map[string]*mockGCSWriter)
+	writtenObjects := make(map[string]*MockGCSWriter)
 	var writtenObjMu sync.Mutex
 
-	mockClient := &mockGCSClient{
+	mockClient := &MockGCSClient{
 		bucketFunc: func(bucketName string) GCSBucketHandle {
-			return &mockGCSBucketHandle{
+			return &MockGCSBucketHandle{
 				name: bucketName,
 				objectFunc: func(objectName string) GCSObjectHandle {
-					writer := &mockGCSWriter{ObjectAttrs: &storage.ObjectAttrs{}}
+					writer := &MockGCSWriter{ObjectAttrs: &storage.ObjectAttrs{}}
 					writtenObjMu.Lock()
 					writtenObjects[objectName] = writer
 					writtenObjMu.Unlock()
-					return &mockGCSObjectHandle{name: objectName, writerToReturn: writer}
+					return &MockGCSObjectHandle{name: objectName, writerToReturn: writer}
 				},
 			}
 		},
@@ -153,7 +153,7 @@ func TestGCSDataArchiver_TableDrivenScenarios(t *testing.T) {
 
 				expectedObjectPathPrefix := config.ObjectPrefix + "/" + tc.expectedBatchKey
 
-				var flushedWriter *mockGCSWriter
+				var flushedWriter *MockGCSWriter
 				var flushedObjectName string
 				writtenObjMu.Lock()
 				for name, writer := range writtenObjects {
@@ -199,7 +199,7 @@ func TestGCSDataArchiver_TableDrivenScenarios(t *testing.T) {
 		archiver.batchMap = make(map[string][]RawDataForArchival)
 		archiver.mu.Unlock()
 		writtenObjMu.Lock()
-		writtenObjects = make(map[string]*mockGCSWriter)
+		writtenObjects = make(map[string]*MockGCSWriter)
 		writtenObjMu.Unlock()
 
 		stopTestTs := baseTs.Add(10 * time.Minute)
@@ -216,7 +216,7 @@ func TestGCSDataArchiver_TableDrivenScenarios(t *testing.T) {
 
 		expectedStopFlushPathPrefix := config.ObjectPrefix + "/" + "2023/11/15/LOC_STOP"
 
-		var stopFlushedWriter *mockGCSWriter
+		var stopFlushedWriter *MockGCSWriter
 		//var capturedStopObjectName string
 		writtenObjMu.Lock()
 		for name, writer := range writtenObjects {
