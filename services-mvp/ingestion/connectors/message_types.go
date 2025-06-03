@@ -59,9 +59,13 @@ type EnrichedMessage struct {
 
 	// Ingestion service metadata
 	IngestionTimestamp time.Time `json:"ingestion_timestamp"`
+
+	// Test Analytics
+	OriginalClientTimestamp time.Time `json:"original_client_timestamp,omitempty"`
+	ClientMessageID         string    `json:"client_message_id, omitempty"`
 }
 
-// Helper function to parse a JSON string into an MQTTMessage struct.
+// ParseMQTTMessage Helper function to parse a JSON string into an MQTTMessage struct.
 // This would be used in your main service logic and in tests.
 func ParseMQTTMessage(jsonData []byte) (*MQTTMessage, error) {
 	var msg MQTTMessage

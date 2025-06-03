@@ -1,0 +1,79 @@
+# --- Global Settings ---
+# Default project ID, can be overridden per environment.
+# For actual deployment, this would be your specific GCP Project ID.
+default_project_id: "gemini-power-test"
+
+# Default location for resources like GCS buckets, BigQuery datasets if not specified per resource.
+# Choose a common EU region, e.g., "europe-west1" (Belgium), "europe-west3" (Frankfurt), etc.
+default_location: "europe-west1"
+
+# --- Environment Specific Overrides ---
+# You can define different project IDs or other settings for test, staging, prod, etc.
+environments:
+  test:
+    project_id: "gemini-power-test"
+    # Example: Maybe test uses a different default location or specific labels
+    # default_location: "europe-west4" # Netherlands
+    # default_labels:
+    #   environment: "test"
+    #   cost-center: "rnd"
+  production:
+    project_id: "your-gcp-production-project-id-eu"
+    teardown_protection: true # Prevent accidental deletion of production resources by the manager
+    # default_labels:
+    #   environment: "production"
+    #   cost-center: "operations"
+
+# --- Resource Definitions ---
+# ... (existing config) ...
+
+resources:
+  pubsub_topics:
+    - name: "ingested-device-messages"
+      labels:
+        service-group: "ingestion"
+        data-type: "mixed-enriched-unidentified"
+      producer_service: "ingestion-service" # NEW: Expected producer
+
+    - name: "xdevice-decoded-readings"
+      labels:
+        service-group: "processing"
+        device-type: "xdevice"
+        data-type: "decoded"
+      producer_service: "xdevice-processing-service" # NEW
+
+    - name: "unidentified-device-audit-messages"
+      labels:
+        service-group: "ingestion"
+        data-type: "unidentified-raw"
+      producer_service: "ingestion-service" # NEW
+
+  pubsub_subscriptions:
+    - name: "xdevice-processing-service-input-sub"
+      topic: "ingested-device-messages"
+      ack_deadline_seconds: 30
+      labels:
+        subscriber-service: "xdevice-processing"
+      consumer_service: "xdevice-processing-service" # NEW: Expected consumer
+
+    - name: "raw-archival-service-unidentified-sub"
+      topic: "unidentified-device-audit-messages"
+      ack_deadline_seconds: 60
+      labels:
+        subscriber-service: "raw-data-archival"
+      consumer_service: "icestore-archival-service" # NEW
+
+  bigquery_tables:
+    - name: "meter_readings"
+      dataset: "device_telemetry"
+      # ... (other fields) ...
+      accessing_services: # NEW: List of services expected to read/write
+        - "xdevice-processing-service" # (writes)
+        - "reporting-service"          # (reads - hypothetical)
+
+  gcs_buckets:
+    - name: "icestore-raw-device-archives-eu"
+      # ... (other fields) ...
+      accessing_services: # NEW
+        - "icestore-archival-service" # (writes)
+        - "audit-retrieval-tool"      # (reads - hypothetical)

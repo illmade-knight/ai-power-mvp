@@ -1,0 +1,21 @@
+smctlBinaryPath: "./bin/manager_cli.exe"
+serviceManagerAPIBinaryPath: "./bin/runmanager.exe" # Assuming your SM API server binary is named this
+ingestionServiceBinaryPath: "./bin/runingestion.exe" # Assuming your Ingestion server binary is named this
+loadGeneratorBinaryPath: "./bin/loadgen.exe"
+pubSubVerifierBinaryPath: "./bin/verify.exe"
+serviceManagerYAMLPath: "../loadtest.yaml" # Path to the servicemanager's own config
+
+testEnvName: "gcp-loadtest-env"
+gcpProjectID: "your-actual-gcp-project-id" # IMPORTANT: Set this
+enrichedTopicID: "loadtest-enriched-device-messages"
+unidentifiedTopicID: "loadtest-unidentified-device-messages"
+
+numDevices: 50
+msgRatePerDevice: 2.0
+testDuration: "2m" # e.g., 2 minutes
+
+verifierOutputFile: "results/loadtest_run1_results.json"
+# testRunID: # Will be auto-generated if omitted
+machineInfo: "My Local Dev Machine"
+serviceManagerAPIPort: "8090"
+ingestionServiceHTTPPort: "8081"
