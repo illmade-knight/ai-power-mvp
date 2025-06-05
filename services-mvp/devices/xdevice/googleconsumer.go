@@ -31,7 +31,7 @@ func LoadGooglePubSubConsumerConfigFromEnv(subscriptionEnvVar string, defaultSub
 	if subID == "" {
 		subID = defaultSubID
 		if defaultSubID == "" {
-			return nil, fmt.Errorf("environment variable %s for Pub/Sub subscription ID not set and no default provided", subscriptionEnvVar)
+			return nil, fmt.Errorf("environment variable %s for Pub/Sub subscription MessageID not set and no default provided", subscriptionEnvVar)
 		}
 	}
 

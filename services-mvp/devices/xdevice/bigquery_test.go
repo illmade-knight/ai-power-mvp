@@ -49,7 +49,7 @@ func TestLoadBigQueryInserterConfigFromEnv(t *testing.T) {
 		assert.Equal(t, "test-meter-readings-table", cfg.TableID)
 	})
 
-	t.Run("Missing project ID", func(t *testing.T) {
+	t.Run("Missing project MessageID", func(t *testing.T) {
 		// Store original value if needed for other tests, though t.Setenv handles cleanup for *this* test.
 		// originalProjectID := os.Getenv("GCP_PROJECT_ID")
 		t.Setenv("GCP_PROJECT_ID", "") // Set to empty or use t.Unsetenv if available and desired
@@ -62,7 +62,7 @@ func TestLoadBigQueryInserterConfigFromEnv(t *testing.T) {
 		assert.Contains(t, err.Error(), "GCP_PROJECT_ID")
 	})
 
-	t.Run("Missing dataset ID", func(t *testing.T) {
+	t.Run("Missing dataset MessageID", func(t *testing.T) {
 		t.Setenv("GCP_PROJECT_ID", "test-p")
 		t.Setenv("BQ_DATASET_ID", "")
 		t.Setenv("BQ_TABLE_ID_METER_READINGS", "test-t")
@@ -72,7 +72,7 @@ func TestLoadBigQueryInserterConfigFromEnv(t *testing.T) {
 		assert.Contains(t, err.Error(), "BQ_DATASET_ID")
 	})
 
-	t.Run("Missing table ID", func(t *testing.T) {
+	t.Run("Missing table MessageID", func(t *testing.T) {
 		t.Setenv("GCP_PROJECT_ID", "test-p")
 		t.Setenv("BQ_DATASET_ID", "test-d")
 		t.Setenv("BQ_TABLE_ID_METER_READINGS", "")

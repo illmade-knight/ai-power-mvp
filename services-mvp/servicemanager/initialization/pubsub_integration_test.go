@@ -23,7 +23,7 @@ import (
 const (
 	testPubSubManagerEmulatorImage = "gcr.io/google.com/cloudsdktool/cloud-sdk:emulators"
 	testPubSubManagerEmulatorPort  = "8085/tcp"
-	testPubSubManagerProjectID     = "test-sm-project" // Project ID for the emulator
+	testPubSubManagerProjectID     = "test-sm-project" // Project MessageID for the emulator
 )
 
 // setupPubSubEmulatorForManagerTest starts a Pub/Sub emulator.
@@ -48,7 +48,7 @@ func setupPubSubEmulatorForManagerTest(t *testing.T, ctx context.Context) (emula
 	// Set PUBSUB_EMULATOR_HOST for client libraries to auto-detect
 	// t.Setenv is preferred as it handles cleanup.
 	t.Setenv("PUBSUB_EMULATOR_HOST", emulatorHost)
-	t.Setenv("GOOGLE_CLOUD_PROJECT", testPubSubManagerProjectID) // Ensure project ID is also set for clients
+	t.Setenv("GOOGLE_CLOUD_PROJECT", testPubSubManagerProjectID) // Ensure project MessageID is also set for clients
 
 	return emulatorHost, func() {
 		t.Log("Terminating Pub/Sub emulator (for manager test) container...")
@@ -84,7 +84,7 @@ default_project_id: "%s"
 default_location: "europe-west1" # Not directly used by PubSubManager, but good for completeness
 environments:
   integration_test:
-    project_id: "%s" # This project ID will be used by PubSubManager
+    project_id: "%s" # This project MessageID will be used by PubSubManager
     teardown_protection: false # Allow teardown in test
 resources:
   pubsub_topics:

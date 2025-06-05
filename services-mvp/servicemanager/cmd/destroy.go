@@ -67,12 +67,12 @@ this command will fail unless the --force flag is provided.`,
 			log.Warn().Str("environment", environment).Msg("Environment not explicitly defined in config's 'environments' section; proceeding without teardown protection check for this specific key (will use defaults if any).")
 		}
 
-		// Determine the actual target project ID
+		// Determine the actual target project MessageID
 		actualProjectID := projectID // Value from the --project flag (if provided)
 		if actualProjectID == "" {   // If not overridden by flag, get from config based on environment
 			actualProjectID, err = initialization.GetTargetProjectID(cfg, environment)
 			if err != nil {
-				return fmt.Errorf("could not determine target project ID for environment '%s': %w", environment, err)
+				return fmt.Errorf("could not determine target project MessageID for environment '%s': %w", environment, err)
 			}
 		}
 		log.Info().Str("target_project_id", actualProjectID).Msg("Targeting GCP Project for destruction")

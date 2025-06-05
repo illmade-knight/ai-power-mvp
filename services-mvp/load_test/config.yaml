@@ -1,0 +1,14 @@
+# load_generator_config.yaml
+brokerURL: "tcp://localhost:1883"
+topicPattern: "devices/{DEVICE_EUI}/telemetry"
+numDevices: 50
+msgRatePerDevice: 0.5 # 1 message every 2 seconds per device
+testDuration: "1m30s" # e.g., 1 minute 30 seconds
+qos: 1
+clientIDPrefix: "yaml-loadgen"
+# logLevel: "debug" # If you implement more advanced logging
+
+# Optional Firestore settings for local testing with an emulator
+# firestoreEmulatorHost: "localhost:8088" # Example, use actual if orchestrator sets it up
+# firestoreProjectID: "local-test-project"
+# firestoreCollection: "simulated-devices"

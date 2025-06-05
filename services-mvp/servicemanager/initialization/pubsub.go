@@ -23,7 +23,7 @@ func NewPubSubManager(logger zerolog.Logger) *PubSubManager {
 	}
 }
 
-// GetTargetProjectID determines the project ID to use based on the environment.
+// GetTargetProjectID determines the project MessageID to use based on the environment.
 func GetTargetProjectID(cfg *TopLevelConfig, environment string) (string, error) {
 	if envSpec, ok := cfg.Environments[environment]; ok && envSpec.ProjectID != "" {
 		return envSpec.ProjectID, nil
@@ -31,7 +31,7 @@ func GetTargetProjectID(cfg *TopLevelConfig, environment string) (string, error)
 	if cfg.DefaultProjectID != "" {
 		return cfg.DefaultProjectID, nil
 	}
-	return "", fmt.Errorf("project ID not found for environment '%s' and no default_project_id set", environment)
+	return "", fmt.Errorf("project MessageID not found for environment '%s' and no default_project_id set", environment)
 }
 
 // Setup creates all configured Pub/Sub topics and subscriptions for a given environment.

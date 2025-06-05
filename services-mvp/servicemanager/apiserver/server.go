@@ -46,8 +46,8 @@ func (cs *ConfigServer) GetServiceConfigHandler(w http.ResponseWriter, r *http.R
 	// GetTargetProjectID is assumed to be an exported function from the initialization package.
 	targetProjectID, err := initialization.GetTargetProjectID(cs.config, environment)
 	if err != nil {
-		cs.logger.Error().Err(err).Str("service", serviceName).Str("environment", environment).Msg("Failed to determine target project ID")
-		http.Error(w, fmt.Sprintf("Failed to determine project ID for environment '%s': %v", environment, err), http.StatusInternalServerError)
+		cs.logger.Error().Err(err).Str("service", serviceName).Str("environment", environment).Msg("Failed to determine target project MessageID")
+		http.Error(w, fmt.Sprintf("Failed to determine project MessageID for environment '%s': %v", environment, err), http.StatusInternalServerError)
 		return
 	}
 

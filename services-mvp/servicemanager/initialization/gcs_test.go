@@ -245,13 +245,13 @@ func TestStorageManager_Setup(t *testing.T) {
 			expectError: false,
 		},
 		{
-			name:        "Project ID not found for environment",
+			name:        "Project MessageID not found for environment",
 			config:      &TopLevelConfig{DefaultProjectID: "fallback-project", Resources: ResourcesSpec{GCSBuckets: []GCSBucket{{Name: "some-bucket"}}}, Environments: map[string]EnvironmentSpec{}},
 			environment: "missing-env",
 			setupMocks: func(t *testing.T, mockClient *MockGCSClient, mockBucket1 *MockGCSBucketHandle, mockBucket2 *MockGCSBucketHandle) {
 			},
 			expectError:   true,
-			errorContains: "project ID not found for environment 'missing-env'",
+			errorContains: "project MessageID not found for environment 'missing-env'",
 		},
 	}
 

@@ -18,7 +18,7 @@ var (
 	// Also a persistent flag.
 	environment string
 
-	// projectID allows overriding the GCP project ID specified in the config or environment.
+	// projectID allows overriding the GCP project MessageID specified in the config or environment.
 	// Persistent flag.
 	projectID string
 
@@ -79,7 +79,7 @@ func init() {
 	// Define persistent flags for the root command. These are global.
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "Path to the master YAML configuration file (e.g., ./service.yaml)")
 	rootCmd.PersistentFlags().StringVarP(&environment, "env", "e", "", "Target environment (e.g., 'test', 'prod') defined in the config file")
-	rootCmd.PersistentFlags().StringVarP(&projectID, "project", "p", "", "GCP Project ID (overrides project ID from config for the specified environment)")
+	rootCmd.PersistentFlags().StringVarP(&projectID, "project", "p", "", "GCP Project MessageID (overrides project MessageID from config for the specified environment)")
 	rootCmd.PersistentFlags().StringVar(&logLevel, "log-level", "info", "Set the logging level (trace, debug, info, warn, error, fatal, panic)")
 
 	// You can mark flags as required if they are always needed,

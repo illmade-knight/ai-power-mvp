@@ -153,7 +153,7 @@ func TestConfigServer_GetServiceConfigHandler(t *testing.T) {
 			serviceNameQuery:   "service-alpha",
 			envQuery:           "staging", // Not in testConfig.Environments
 			expectedStatusCode: http.StatusInternalServerError,
-			errorContains:      "Failed to determine project ID for environment 'staging'",
+			errorContains:      "Failed to determine project MessageID for environment 'staging'",
 		},
 	}
 

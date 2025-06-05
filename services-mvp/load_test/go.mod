@@ -3,15 +3,20 @@ module load_test
 go 1.23.0
 
 require (
+	cloud.google.com/go/firestore v1.18.0
 	cloud.google.com/go/pubsub v1.49.0
 	github.com/docker/go-connections v0.5.0
 	github.com/eclipse/paho.mqtt.golang v1.5.0
 	github.com/google/uuid v1.6.0
+	github.com/illmade-knight/ai-power-mvp/services-mvp/ingestion v0.0.0
 	github.com/rs/zerolog v1.34.0
+	github.com/stretchr/testify v1.10.0
 	github.com/testcontainers/testcontainers-go v0.37.0
-	google.golang.org/api v0.235.0
+	google.golang.org/api v0.236.0
 	gopkg.in/yaml.v3 v3.0.1
 )
+
+replace github.com/illmade-knight/ai-power-mvp/services-mvp/ingestion => ../ingestion/v1
 
 require (
 	cloud.google.com/go v0.120.0 // indirect
@@ -19,6 +24,7 @@ require (
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
 	cloud.google.com/go/compute/metadata v0.7.0 // indirect
 	cloud.google.com/go/iam v1.5.2 // indirect
+	cloud.google.com/go/longrunning v0.6.7 // indirect
 	dario.cat/mergo v1.0.1 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
@@ -59,7 +65,7 @@ require (
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
 	github.com/shirou/gopsutil/v4 v4.25.1 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
-	github.com/stretchr/testify v1.10.0 // indirect
+	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/tklauser/go-sysconf v0.3.12 // indirect
 	github.com/tklauser/numcpus v0.6.1 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect

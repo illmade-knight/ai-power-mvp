@@ -49,7 +49,7 @@ type GooglePubSubConsumerConfig struct {
 }
 
 // LoadGooglePubSubConsumerConfigFromEnv loads consumer configuration from environment variables.
-// `subscriptionEnvVar` is the name of the environment variable holding the subscription ID.
+// `subscriptionEnvVar` is the name of the environment variable holding the subscription MessageID.
 func LoadGooglePubSubConsumerConfigFromEnv(subscriptionEnvVar string) (*GooglePubSubConsumerConfig, error) {
 	cfg := &GooglePubSubConsumerConfig{
 		ProjectID:              os.Getenv("GCP_PROJECT_ID"),

@@ -84,7 +84,7 @@ type BigQueryInserter struct {
 func NewBigQueryInserter(
 	ctx context.Context,
 	client *bigquery.Client, // Injected client
-	cfg *BigQueryInserterConfig, // Still need dataset and table ID
+	cfg *BigQueryInserterConfig, // Still need dataset and table MessageID
 	logger zerolog.Logger,
 ) (*BigQueryInserter, error) {
 	if client == nil {
@@ -97,11 +97,11 @@ func NewBigQueryInserter(
 		return nil, fmt.Errorf("DatasetID and TableID must be provided in BigQueryInserterConfig")
 	}
 
-	projectID := client.Project() // Get project ID from the injected client
+	projectID := client.Project() // Get project MessageID from the injected client
 	if projectID == "" && cfg.ProjectID == "" {
 		// This case should be rare if client is properly initialized.
 		// If client.Project() is empty, and cfg.ProjectID is also empty, it's an issue.
-		return nil, fmt.Errorf("project ID could not be determined from client or config")
+		return nil, fmt.Errorf("project MessageID could not be determined from client or config")
 	} else if projectID == "" {
 		projectID = cfg.ProjectID // Fallback to config if client doesn't expose it easily (shouldn't happen)
 		logger.Warn().Str("config_project_id", projectID).Msg("Using ProjectID from config as client.Project() was empty.")

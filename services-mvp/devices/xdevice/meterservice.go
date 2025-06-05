@@ -35,7 +35,7 @@ type MessageConsumer interface {
 // ServiceConfig holds configuration for the ProcessingService.
 // Renamed from ProcessingServiceConfig
 type ServiceConfig struct {
-	// Env var name for the subscription ID for messages from the ingestion service
+	// Env var name for the subscription MessageID for messages from the ingestion service
 	UpstreamSubscriptionEnvVar string
 	NumProcessingWorkers       int
 }
@@ -76,7 +76,7 @@ func NewProcessingService(
 	inserter DecodedDataInserter,
 	logger zerolog.Logger,
 ) (*ProcessingService, error) {
-	// The subscription ID here is for "XDevice" input. If this service becomes more generic,
+	// The subscription MessageID here is for "XDevice" input. If this service becomes more generic,
 	// it might need multiple consumers or a way to filter messages by device type.
 	// Using the renamed LoadGooglePubSubConsumerConfigFromEnv
 	consumerCfg, err := LoadGooglePubSubConsumerConfigFromEnv(config.UpstreamSubscriptionEnvVar, "default-device-input-sub")
