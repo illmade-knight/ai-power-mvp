@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	messenger2 "load_test/apps/devicegen/messenger"
+	"load_test/apps/devicegen/messenger"
 	"os"
 	"path/filepath"
 	"strings"
@@ -137,8 +137,8 @@ func TestMessenger_Integration_DeviceGenAndPublish(t *testing.T) { // Updated te
 
 	// --- 2. Configure DeviceGenerator ---
 	numTestDevices := 3
-	msgRatePerDevice := 2.0                            // messages per second
-	deviceGenCfg := &messenger2.DeviceGeneratorConfig{ // Updated package name
+	msgRatePerDevice := 2.0                           // messages per second
+	deviceGenCfg := &messenger.DeviceGeneratorConfig{ // Updated package name
 		NumDevices:            numTestDevices,
 		MsgRatePerDevice:      msgRatePerDevice,
 		FirestoreEmulatorHost: firestoreEmulatorHost,
@@ -157,7 +157,7 @@ func TestMessenger_Integration_DeviceGenAndPublish(t *testing.T) { // Updated te
 	require.NoError(t, err, "Failed to create Firestore client for DeviceGenerator")
 	defer fsClient.Close()
 
-	deviceGen, err := messenger2.NewDeviceGenerator(deviceGenCfg, fsClient, logger) // Updated package name
+	deviceGen, err := messenger.NewDeviceGenerator(deviceGenCfg, fsClient, logger) // Updated package name
 	require.NoError(t, err, "Failed to create DeviceGenerator")
 
 	// --- 3. Create and Seed Devices ---
@@ -186,7 +186,7 @@ func TestMessenger_Integration_DeviceGenAndPublish(t *testing.T) { // Updated te
 			require.NoError(t, errGet, "Failed to get device %s from Firestore", expectedEUI)
 			assert.True(t, docSnap.Exists(), "Device %s not found in Firestore", expectedEUI)
 
-			var deviceData messenger2.FirestoreDeviceData // Updated package name
+			var deviceData messenger.FirestoreDeviceData // Updated package name
 			errData := docSnap.DataTo(&deviceData)
 			require.NoError(t, errData, "Failed to map Firestore data for device %s", expectedEUI)
 			assert.NotEmpty(t, deviceData.ClientID, "ClientID is empty for device %s", expectedEUI)
@@ -197,11 +197,11 @@ func TestMessenger_Integration_DeviceGenAndPublish(t *testing.T) { // Updated te
 	})
 
 	// --- 5. Configure Publisher ---
-	pahoFactory := &messenger2.PahoMQTTClientFactory{} // Updated package name
+	pahoFactory := &messenger.PahoMQTTClientFactory{} // Updated package name
 	publisherClientID := "loadtest-publisher-01"
 	publisherQOS := 0
 
-	publisher := messenger2.NewPublisher( // Updated package name
+	publisher := messenger.NewPublisher( // Updated package name
 		testMqttTopicPattern,
 		mqttBrokerURL,
 		publisherClientID,
@@ -217,7 +217,7 @@ func TestMessenger_Integration_DeviceGenAndPublish(t *testing.T) { // Updated te
 	require.NoError(t, err, "Failed to create test MQTT subscriber")
 	defer mqttSubscriber.Disconnect(250)
 
-	receivedMessages := make(map[string][]messenger2.MQTTMessage) // Updated package name
+	receivedMessages := make(map[string][]messenger.MQTTMessage) // Updated package name
 	var mu sync.Mutex
 
 	wildcardSubscribeTopic := strings.ReplaceAll(testMqttTopicPattern, "{DEVICE_EUI}", "+")
@@ -225,7 +225,7 @@ func TestMessenger_Integration_DeviceGenAndPublish(t *testing.T) { // Updated te
 		mu.Lock()
 		defer mu.Unlock()
 		t.Logf("Verifier received message on topic: %s", msg.Topic())
-		var mqttMsg messenger2.MQTTMessage // Updated package name
+		var mqttMsg messenger.MQTTMessage // Updated package name
 		if errJson := json.Unmarshal(msg.Payload(), &mqttMsg); errJson != nil {
 			t.Errorf("Failed to unmarshal received MQTT message: %v. Payload: %s", errJson, string(msg.Payload()))
 			return

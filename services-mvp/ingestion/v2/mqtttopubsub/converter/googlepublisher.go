@@ -92,7 +92,7 @@ func NewGooglePubSubPublisher(ctx context.Context, cfg *GooglePubSubPublisherCon
 	}, nil
 }
 
-// PublishEnriched publishes the MQTT message to pubsub.
+// Publish publishes the MQTT message to pubsub.
 func (p *GooglePubSubPublisher) Publish(ctx context.Context, message *MQTTMessage) error {
 	if message == nil {
 		return errors.New("cannot publish nil EnrichedMessage")

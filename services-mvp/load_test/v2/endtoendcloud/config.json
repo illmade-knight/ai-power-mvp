@@ -1,0 +1,19 @@
+{
+  "overallTestTimeout": 4,
+  "loadGenDuration": 20,
+  "cloudServiceStartupDelay": 30,
+  "gracePeriodForMessageCompletion": 15,
+  "numKnownDevices": 20,
+  "numUnknownDevices": 2,
+  "msgRatePerDevice": 1.0,
+  "converterServiceConfig": {
+    "InputChanCapacity": 100,
+    "OutputChanCapacity": 100,
+    "NumProcessingWorkers": 5
+  },
+  "enrichmentServiceConfig": {
+    "NumProcessingWorkers": 10,
+    "InputChanCapacity": 120,
+    "MaxOutstandingMessages": 100
+  }
+}

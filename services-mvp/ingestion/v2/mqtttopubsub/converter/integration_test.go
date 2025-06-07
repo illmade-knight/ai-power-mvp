@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/illmade-knight/ai-power-mvp/services-mvp/mqtttopubsub/converter"
+	"github.com/illmade-knight/ai-power-mvp/services-mvp/ingestion/mqtttopubsub/converter"
 	"github.com/testcontainers/testcontainers-go"
 	"os"
 	"path/filepath"

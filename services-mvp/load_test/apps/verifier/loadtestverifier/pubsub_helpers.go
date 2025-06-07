@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/rs/zerolog/log"
 	"sync"
 	"time"
 
@@ -73,7 +72,7 @@ func processMessage(
 	}
 
 	recordsLock.Lock()
-	log.Info().Str("source", topicSource).Str("client_msg_id", payload.ClientMessageID).Msg("Received message")
+	//log.Info().Str("source", topicSource).Str("client_msg_id", payload.ClientMessageID).Msg("Received message")
 	*records = append(*records, record)
 	if topicSource == "enriched" {
 		(*enrichedCounter)++

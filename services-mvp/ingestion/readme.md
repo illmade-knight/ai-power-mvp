@@ -8,3 +8,7 @@ advised handling mqtt in a simpler - dump to pubsub - microservice
 the original combined [service](v1/connectors/service.go) is in the [v1](v1) directory
 
 we're looking at the split into 2 services in [v2](v2)
+
+if the mqtt client isn't causing problems then v1 is a simpler solution but I'm going down the 
+AI agents recommended paths for now
+

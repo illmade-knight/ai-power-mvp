@@ -1,4 +1,4 @@
-module github.com/illmade-knight/ai-power-mvp/services-mvp/mqtttopubsub
+module github.com/illmade-knight/ai-power-mvp/services-mvp/ingestion/mqtttopubsub
 
 go 1.23.0
 

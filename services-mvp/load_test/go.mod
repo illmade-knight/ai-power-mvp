@@ -9,6 +9,8 @@ require (
 	github.com/eclipse/paho.mqtt.golang v1.5.0
 	github.com/google/uuid v1.6.0
 	github.com/illmade-knight/ai-power-mvp/services-mvp/ingestion v0.0.0
+	github.com/illmade-knight/ai-power-mvp/services-mvp/ingestion/enrich v0.0.0
+	github.com/illmade-knight/ai-power-mvp/services-mvp/ingestion/mqtttopubsub v0.0.0
 	github.com/rs/zerolog v1.34.0
 	github.com/stretchr/testify v1.10.0
 	github.com/testcontainers/testcontainers-go v0.37.0
@@ -17,6 +19,8 @@ require (
 )
 
 replace github.com/illmade-knight/ai-power-mvp/services-mvp/ingestion => ../ingestion/v1
+replace github.com/illmade-knight/ai-power-mvp/services-mvp/ingestion/enrich => ../ingestion/v2/enrich
+replace github.com/illmade-knight/ai-power-mvp/services-mvp/ingestion/mqtttopubsub => ../ingestion/v2/mqtttopubsub
 
 require (
 	cloud.google.com/go v0.120.0 // indirect
