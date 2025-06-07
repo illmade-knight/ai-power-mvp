@@ -26,3 +26,5 @@ go.work.sum
 .idea
 /services-mvp/load_test/v1/orchestrate/bin/
 /services-mvp/load_test/v1/orchestrate/
+/services-mvp/ingestion/v2/mqtttopubsub/sampler/test*.json
+/services-mvp/ingestion/v2/mqtttopubsub/mqtt_samples*.json

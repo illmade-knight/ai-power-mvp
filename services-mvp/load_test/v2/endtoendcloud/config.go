@@ -22,6 +22,8 @@ type CloudTestConfig struct {
 	NumUnknownDevices int     `json:"numUnknownDevices"`
 	MsgRatePerDevice  float64 `json:"msgRatePerDevice"`
 
+	MinMessagesMultiplier float64 `json:"minMessagesMultiplier"`
+
 	// Service Configurations
 	ConverterServiceConfig  converter.IngestionServiceConfig   `json:"converterServiceConfig"`
 	EnrichmentServiceConfig connectors.EnrichmentServiceConfig `json:"enrichmentServiceConfig"`
@@ -37,14 +39,14 @@ func DefaultCloudTestConfig() *CloudTestConfig {
 		NumKnownDevices:                 20,
 		NumUnknownDevices:               2,
 		MsgRatePerDevice:                1.0,
+		MinMessagesMultiplier:           0.8,
 		ConverterServiceConfig: converter.IngestionServiceConfig{
 			InputChanCapacity:    100,
-			OutputChanCapacity:   100,
 			NumProcessingWorkers: 5,
 		},
 		EnrichmentServiceConfig: connectors.EnrichmentServiceConfig{
-			NumProcessingWorkers:   10,
-			InputChanCapacity:      120,
+			NumProcessingWorkers:   5,
+			InputChanCapacity:      100,
 			MaxOutstandingMessages: 100,
 		},
 	}

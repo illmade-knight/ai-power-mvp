@@ -135,12 +135,16 @@ func (p *GooglePubSubPublisher) publishData(ctx context.Context, data []byte, at
 		Data:       data,
 		Attributes: attributes,
 	})
-	msgID, err := result.Get(ctx)
-	if err != nil {
-		p.logger.Error().Err(err).Str("identifier", loggingIdentifier).Interface("attributes", attributes).Msg("Failed to publish message to Pub/Sub")
-		return fmt.Errorf("pubsub publish Get for %s: %w", loggingIdentifier, err)
-	}
-	p.logger.Debug().Str("message_id", msgID).Str("identifier", loggingIdentifier).Str("topic", p.topic.ID()).Interface("attributes", attributes).Msg("Message published successfully to Pub/Sub")
+
+	// MODIFICATION: Check the result in a separate goroutine so we don't block
+	// the main processing worker. This is the key change for decoupling.
+	go func() {
+		msgID, err := result.Get(ctx)
+		if err != nil {
+			p.logger.Error().Err(err).Str("identifier", loggingIdentifier).Interface("attributes", attributes).Msg("Failed to publish message to Pub/Sub")
+		}
+		p.logger.Debug().Str("message_id", msgID).Str("identifier", loggingIdentifier).Str("topic", p.topic.ID()).Interface("attributes", attributes).Msg("Message published successfully to Pub/Sub")
+	}()
 	return nil
 }
 

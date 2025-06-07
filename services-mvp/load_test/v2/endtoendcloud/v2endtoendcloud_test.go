@@ -9,7 +9,6 @@ import (
 	endtoend "load_test/v2/endtoendcloud"
 	"os"
 	"path/filepath"
-	//"strings"
 	"sync"
 	"testing"
 	"time"
@@ -23,7 +22,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/api/iterator"
-	//"google.golang.org/api/option"
 
 	// Testcontainers
 	"github.com/testcontainers/testcontainers-go"
@@ -48,6 +46,10 @@ const (
 	cloudTestMqttBrokerPort = "1883/tcp"
 	cloudMqttInputTopic     = "e2ecloud/devices/+/up"
 	cloudMqttPublishPattern = "e2ecloud/devices/%s/up"
+
+	// Redis Configuration (using a local container)
+	cloudTestRedisImage = "redis:8.0.2-alpine"
+	cloudTestRedisPort  = "6379/tcp"
 )
 
 // --- Testcontainer Setup Helper for Mosquitto ---
@@ -75,6 +77,31 @@ func setupMosquittoContainerCloudE2E(t *testing.T, ctx context.Context) (brokerU
 	return brokerURL, func() {
 		require.NoError(t, container.Terminate(ctx))
 		t.Log("CLOUD E2E: Mosquitto container terminated.")
+	}
+}
+
+// --- Testcontainer Setup Helper for Redis ---
+func setupRedisContainer(t *testing.T, ctx context.Context) (redisAddr string, cleanupFunc func()) {
+	t.Helper()
+	req := testcontainers.ContainerRequest{
+		Image:        cloudTestRedisImage,
+		ExposedPorts: []string{cloudTestRedisPort},
+		WaitingFor:   wait.ForListeningPort(cloudTestRedisPort).WithStartupTimeout(60 * time.Second),
+	}
+	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{ContainerRequest: req, Started: true})
+	require.NoError(t, err, "Failed to start Redis container")
+
+	host, err := container.Host(ctx)
+	require.NoError(t, err)
+	port, err := container.MappedPort(ctx, cloudTestRedisPort)
+	require.NoError(t, err)
+
+	redisAddr = fmt.Sprintf("%s:%s", host, port.Port())
+	t.Logf("CLOUD E2E: Redis container started at: %s", redisAddr)
+
+	return redisAddr, func() {
+		require.NoError(t, container.Terminate(ctx))
+		t.Log("CLOUD E2E: Redis container terminated.")
 	}
 }
 
@@ -179,7 +206,7 @@ func cleanupFirestoreCollection(t *testing.T, ctx context.Context, projectID, co
 
 // --- Main Cloud E2E Test Function ---
 func TestEndToEndTwoServiceCloudScenario(t *testing.T) {
-	t.Setenv("GCP_PROJECT_ID", cloudTestGCPProjectID) // Real Project MessageID
+	t.Setenv("GCP_PROJECT_ID", cloudTestGCPProjectID) // Real Project ID
 	gcpProjectID := os.Getenv("GCP_PROJECT_ID")
 	if gcpProjectID == "" {
 		t.Skip("Skipping cloud integration test: GCP_PROJECT_ID environment variable is not set.")
@@ -200,7 +227,7 @@ func TestEndToEndTwoServiceCloudScenario(t *testing.T) {
 	defer cancel()
 
 	consoleWriter := zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339}
-	baseLogger := zerolog.New(consoleWriter).Level(zerolog.DebugLevel).With().Timestamp().Logger()
+	baseLogger := zerolog.New(consoleWriter).Level(zerolog.InfoLevel).With().Timestamp().Logger()
 	runID := uuid.NewString()
 	testPrefix := fmt.Sprintf("%s-%s", cloudTestRunPrefix, runID[:8])
 
@@ -211,9 +238,12 @@ func TestEndToEndTwoServiceCloudScenario(t *testing.T) {
 	topicUnidentified := testPrefix + "-unidentified"
 	collectionDevices := testPrefix + "-devices"
 
-	// --- 2. Setup External Dependencies (MQTT local, GCP real) ---
+	// --- 2. Setup External Dependencies (MQTT & Redis local, GCP real) ---
 	mqttBrokerURL, mosquittoCleanup := setupMosquittoContainerCloudE2E(t, ctx)
 	defer mosquittoCleanup()
+
+	redisAddr, redisCleanup := setupRedisContainer(t, ctx)
+	defer redisCleanup()
 
 	pubsubTopicsToCreate := []string{topicRaw, topicEnriched, topicUnidentified}
 	pubsubSubsToCreate := map[string]string{subRaw: topicRaw}
@@ -266,13 +296,27 @@ func TestEndToEndTwoServiceCloudScenario(t *testing.T) {
 	unidentifiedPublisher, err := connectors.NewGooglePubSubPublisher(ctx, unidentifiedPubCfg, enrichmentLogger)
 	require.NoError(t, err)
 
+	// --- Set up the Caching Layer ---
+	// 1. Create the original Firestore fetcher (this is the "fallback" source of truth)
 	firestoreFetcherCfg := &connectors.FirestoreFetcherConfig{ProjectID: gcpProjectID, CollectionName: collectionDevices}
-	metadataFetcher, err := connectors.NewGoogleDeviceMetadataFetcher(ctx, firestoreFetcherCfg, enrichmentLogger)
+	firestoreFetcher, err := connectors.NewGoogleDeviceMetadataFetcher(ctx, firestoreFetcherCfg, enrichmentLogger)
 	require.NoError(t, err)
+	defer firestoreFetcher.Close()
 
+	// 2. Create the Redis caching fetcher, wrapping the Firestore fetcher
+	redisCfg := &connectors.RedisConfig{
+		Addr:     redisAddr,
+		CacheTTL: 5 * time.Minute, // Keep cache entries for 5 minutes
+	}
+	redisCacheFetcher, err := connectors.NewRedisDeviceMetadataFetcher(ctx, redisCfg, firestoreFetcher.Fetch, enrichmentLogger)
+	require.NoError(t, err)
+	defer redisCacheFetcher.Close() // Ensure the Redis client is closed at the end
+
+	// 3. Pass the new caching fetcher's method to the EnrichmentService
 	inputSubCfg := connectors.PubSubSubscriptionConfig{ProjectID: gcpProjectID, SubscriptionID: subRaw}
 	enrichmentService, err := connectors.NewEnrichmentService(ctx, cfg.EnrichmentServiceConfig, inputSubCfg,
-		metadataFetcher.Fetch, enrichedPublisher, unidentifiedPublisher, enrichmentLogger)
+		redisCacheFetcher.Fetch, // Use the new caching fetcher
+		enrichedPublisher, unidentifiedPublisher, enrichmentLogger)
 	require.NoError(t, err)
 
 	var enrichmentWg sync.WaitGroup
@@ -323,7 +367,7 @@ func TestEndToEndTwoServiceCloudScenario(t *testing.T) {
 			require.NoError(t, err)
 		}
 	}
-	t.Logf("CLOUD E2E: Seeded %d known devices into REAL Firestore.", len(knownDeviceEUIs))
+	t.Logf("CLOUD E2E: Seeded %d known devices into REAL Firestore. Redis cache is empty.", len(knownDeviceEUIs))
 
 	pahoFactory := &messenger.PahoMQTTClientFactory{}
 	messengerPublisher := messenger.NewPublisher(
@@ -401,9 +445,13 @@ func TestEndToEndTwoServiceCloudScenario(t *testing.T) {
 	t.Log("CLOUD E2E: Services confirmed stopped.")
 
 	// --- 9. Assert Results ---
-	minMessagesMultiplier := 0.7
-	minEnriched := int(float64(cfg.NumKnownDevices) * cfg.MsgRatePerDevice * cfg.LoadGenDuration.Seconds() * minMessagesMultiplier)
-	minUnidentified := int(float64(cfg.NumUnknownDevices) * cfg.MsgRatePerDevice * cfg.LoadGenDuration.Seconds() * minMessagesMultiplier)
+
+	totalPotentialEnrichedPerDevice := cfg.MsgRatePerDevice * cfg.LoadGenDuration.Seconds()
+	minEnrichedPerDevice := totalPotentialEnrichedPerDevice * cfg.MinMessagesMultiplier
+	minEnriched := cfg.NumKnownDevices * int(minEnrichedPerDevice)
+	t.Logf("total potential enriched messages per device: %f, received: %d", totalPotentialEnrichedPerDevice, verifierResults.EnrichedMessages)
+
+	minUnidentified := int(float64(cfg.NumUnknownDevices) * cfg.MsgRatePerDevice * cfg.LoadGenDuration.Seconds() * cfg.MinMessagesMultiplier)
 
 	assert.GreaterOrEqualf(t, verifierResults.EnrichedMessages, minEnriched, "Not enough enriched messages. Expected at least ~%d, got %d", minEnriched, verifierResults.EnrichedMessages)
 	assert.GreaterOrEqualf(t, verifierResults.UnidentifiedMessages, minUnidentified, "Not enough unidentified messages. Expected at least ~%d, got %d", minUnidentified, verifierResults.UnidentifiedMessages)
@@ -419,7 +467,7 @@ func TestEndToEndTwoServiceCloudScenario(t *testing.T) {
 	}
 
 	for _, eui := range knownDeviceEUIs {
-		assert.GreaterOrEqualf(t, foundKnownEUIs[eui], int(cfg.MsgRatePerDevice*cfg.LoadGenDuration.Seconds()*minMessagesMultiplier), "Known EUI %s missing sufficient enriched messages", eui)
+		assert.GreaterOrEqualf(t, foundKnownEUIs[eui], int(totalPotentialEnrichedPerDevice), "Known EUI %s missing sufficient enriched messages", eui)
 		assert.Zero(t, foundUnknownEUIs[eui], "Known EUI %s should not appear in unidentified messages", eui)
 	}
 

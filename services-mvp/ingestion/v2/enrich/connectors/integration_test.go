@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/illmade-knight/ai-power-mvp/services-mvp/enrich/connectors"
+	"github.com/illmade-knight/ai-power-mvp/services-mvp/ingestion/enrich/connectors"
 	"github.com/testcontainers/testcontainers-go"
 	"os"
 	"strings"

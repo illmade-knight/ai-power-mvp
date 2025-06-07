@@ -3,9 +3,10 @@
   "loadGenDuration": 20,
   "cloudServiceStartupDelay": 30,
   "gracePeriodForMessageCompletion": 15,
-  "numKnownDevices": 20,
+  "numKnownDevices": 12,
   "numUnknownDevices": 2,
   "msgRatePerDevice": 1.0,
+  "minMessagesMultiplier": 0.8,
   "converterServiceConfig": {
     "InputChanCapacity": 100,
     "OutputChanCapacity": 100,
