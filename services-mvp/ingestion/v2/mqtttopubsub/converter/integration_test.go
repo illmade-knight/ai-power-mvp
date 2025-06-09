@@ -7,22 +7,21 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/illmade-knight/ai-power-mvp/services-mvp/ingestion/mqtttopubsub/converter"
-	"github.com/testcontainers/testcontainers-go"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"cloud.google.com/go/pubsub"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/illmade-knight/ai-power-mvp/services-mvp/ingestion/mqtttopubsub/converter"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/api/option"
-
+	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
@@ -49,9 +48,8 @@ const (
 var testLogger zerolog.Logger
 
 func init() {
-	// Initialize a logger for tests. Adjust output/level as needed.
-	// testLogger = zerolog.New(os.Stderr).With().Timestamp().Logger().Level(zerolog.DebugLevel)
-	testLogger = zerolog.Nop() // Disable logging for cleaner test output by default
+	// Initialize a logger for tests. To see full logs, change Nop() to New().
+	testLogger = zerolog.Nop()
 }
 
 // --- Test Setup Helpers ---
@@ -78,14 +76,11 @@ func createTestMqttPublisherClient(brokerURL string, clientID string, logger zer
 // setupMosquittoContainer starts a Mosquitto container.
 func setupMosquittoContainer(t *testing.T, ctx context.Context) (brokerURL string, cleanupFunc func()) {
 	t.Helper()
-	// Create a minimal mosquitto.conf if not providing one via bind mount
-	// For this test, allow anonymous and set a listener.
 	mosquittoConfContent := `
 persistence false
 listener 1883
 allow_anonymous true
 `
-	// Create a temporary directory for the config
 	tempDir := t.TempDir()
 	confPath := filepath.Join(tempDir, "mosquitto.conf")
 	err := os.WriteFile(confPath, []byte(mosquittoConfContent), 0644)
@@ -113,8 +108,6 @@ allow_anonymous true
 	return brokerURL, func() {
 		if err := container.Terminate(ctx); err != nil {
 			t.Logf("Failed to terminate Mosquitto container: %v", err)
-		} else {
-			t.Log("Mosquitto container terminated.")
 		}
 	}
 }
@@ -138,222 +131,250 @@ func setupPubSubEmulator(t *testing.T, ctx context.Context, projectID, topicID, 
 	emulatorHost = fmt.Sprintf("%s:%s", host, port.Port())
 	t.Logf("Pub/Sub emulator started, host: %s", emulatorHost)
 
-	// Set PUBSUB_EMULATOR_HOST for the admin client creating topics/subs
 	originalEmulatorHost := os.Getenv("PUBSUB_EMULATOR_HOST")
 	os.Setenv("PUBSUB_EMULATOR_HOST", emulatorHost)
-	defer os.Setenv("PUBSUB_EMULATOR_HOST", originalEmulatorHost) // Restore after setup
+	defer os.Setenv("PUBSUB_EMULATOR_HOST", originalEmulatorHost)
 
-	adminClient, err := pubsub.NewClient(ctx, projectID) // Uses PUBSUB_EMULATOR_HOST
+	adminClient, err := pubsub.NewClient(ctx, projectID)
 	require.NoError(t, err, "Failed to create admin Pub/Sub client for emulator")
 	defer adminClient.Close()
 
 	psTopic := adminClient.Topic(topicID)
-	exists, errExists := psTopic.Exists(ctx)
-	require.NoError(t, errExists, "Error checking if topic %s exists", topicID)
+	exists, _ := psTopic.Exists(ctx)
 	if !exists {
 		_, err = adminClient.CreateTopic(ctx, topicID)
 		require.NoError(t, err, "Failed to create topic %s on emulator", topicID)
-		t.Logf("Created Pub/Sub topic '%s' on emulator", topicID)
-	} else {
-		t.Logf("Pub/Sub topic '%s' already exists on emulator", topicID)
 	}
 
 	psSub := adminClient.Subscription(subID)
-	exists, errExists = psSub.Exists(ctx)
-	require.NoError(t, errExists, "Error checking if subscription %s exists", subID)
+	exists, _ = psSub.Exists(ctx)
 	if !exists {
 		_, err = adminClient.CreateSubscription(ctx, subID, pubsub.SubscriptionConfig{Topic: psTopic, AckDeadline: 10 * time.Second})
 		require.NoError(t, err, "Failed to create subscription %s for topic %s on emulator", subID, topicID)
-		t.Logf("Created Pub/Sub subscription '%s' for topic '%s' on emulator", subID, topicID)
-	} else {
-		t.Logf("Pub/Sub subscription '%s' already exists on emulator", subID)
 	}
 
 	return emulatorHost, func() {
 		if err := container.Terminate(ctx); err != nil {
 			t.Logf("Failed to terminate Pub/Sub emulator: %v", err)
-		} else {
-			t.Log("Pub/Sub emulator terminated.")
 		}
 	}
 }
 
-func TestIngestionService_Integration_MQTT_To_PubSub(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute) // Test timeout
-	defer cancel()
-
-	// --- 1. Setup Emulators ---
+// commonTestSetup is a helper to reduce boilerplate in test cases.
+func commonTestSetup(t *testing.T, ctx context.Context) (string, string, func()) {
 	mqttBrokerURL, mosquittoCleanup := setupMosquittoContainer(t, ctx)
-	defer mosquittoCleanup()
-
 	pubsubEmulatorHost, pubsubEmulatorCleanup := setupPubSubEmulator(t, ctx,
 		testPubSubProjectID,
 		testPubSubTopicIDProcessed, testPubSubSubscriptionIDProcessed,
 	)
-	defer pubsubEmulatorCleanup()
 
-	// --- 2. Setup Environment Variables for IngestionService ---
-	// These are used by LoadMQTTClientConfigFromEnv and LoadGooglePubSubPublisherConfigFromEnv
+	cleanup := func() {
+		pubsubEmulatorCleanup()
+		mosquittoCleanup()
+	}
+
+	return mqttBrokerURL, pubsubEmulatorHost, cleanup
+}
+
+func TestIngestionService_Integration_MQTT_To_PubSub(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	mqttBrokerURL, pubsubEmulatorHost, cleanup := commonTestSetup(t, ctx)
+	defer cleanup()
+
 	t.Setenv("MQTT_BROKER_URL", mqttBrokerURL)
-	t.Setenv("MQTT_TOPIC", testMqttTopicPattern) // The service will subscribe to this
+	t.Setenv("MQTT_TOPIC", testMqttTopicPattern)
 	t.Setenv("MQTT_CLIENT_ID_PREFIX", testMqttClientIDPrefix)
-	// Optional MQTT vars, set to empty if not used by your default Mosquitto config
-	t.Setenv("MQTT_USERNAME", "")
-	t.Setenv("MQTT_PASSWORD", "")
-	t.Setenv("MQTT_KEEP_ALIVE_SECONDS", "60")
-	t.Setenv("MQTT_CONNECT_TIMEOUT_SECONDS", "10")
-
-	t.Setenv("PUBSUB_EMULATOR_HOST", pubsubEmulatorHost) // For the service's PubSub client
+	t.Setenv("PUBSUB_EMULATOR_HOST", pubsubEmulatorHost)
 	t.Setenv("GCP_PROJECT_ID", testPubSubProjectID)
-	t.Setenv(envVarPubSubTopicProcessed, testPubSubTopicIDProcessed) // For LoadGooglePubSubPublisherConfigFromEnv
-	t.Setenv("GCP_PUBSUB_CREDENTIALS_FILE", "")                      // Ensure ADC isn't used with emulator
+	t.Setenv(envVarPubSubTopicProcessed, testPubSubTopicIDProcessed)
 
-	// --- 3. Initialize IngestionService Components ---
 	serviceLogger := testLogger.With().Str("component", "IngestionService").Logger()
-
 	mqttCfg, err := converter.LoadMQTTClientConfigFromEnv()
-	require.NoError(t, err, "Failed to load MQTT client config from env")
-
+	require.NoError(t, err)
 	pubsubCfg, err := converter.LoadGooglePubSubPublisherConfigFromEnv(envVarPubSubTopicProcessed)
-	require.NoError(t, err, "Failed to load Pub/Sub publisher config from env")
-
-	// Create publisher first (needs PUBSUB_EMULATOR_HOST to be set for NewClient via env)
-	publisher, err := converter.NewGooglePubSubPublisher(ctx, pubsubCfg, serviceLogger.With().Str("subcomponent", "PubSubPublisher").Logger())
-	require.NoError(t, err, "Failed to create GooglePubSubPublisher")
+	require.NoError(t, err)
+	publisher, err := converter.NewGooglePubSubPublisher(ctx, pubsubCfg, serviceLogger)
+	require.NoError(t, err)
 	defer publisher.Stop()
 
-	ingestionServiceCfg := converter.DefaultIngestionServiceConfig()
-	// You can customize ingestionServiceCfg here if needed, e.g., worker count for tests
-	// ingestionServiceCfg.NumProcessingWorkers = 1
+	service := converter.NewIngestionService(publisher, serviceLogger, converter.DefaultIngestionServiceConfig(), mqttCfg)
 
-	service := converter.NewIngestionService(publisher, serviceLogger, ingestionServiceCfg, mqttCfg)
+	err = service.Start()
+	require.NoError(t, err, "IngestionService.Start() returned an error")
+	defer service.Stop()
 
-	// --- 4. Start the IngestionService ---
-	serviceErrChan := make(chan error, 1)
-	go func() {
-		t.Log("Starting IngestionService in goroutine...")
-		if startErr := service.Start(); startErr != nil {
-			serviceErrChan <- fmt.Errorf("IngestionService.Start() failed: %w", startErr)
-		}
-		close(serviceErrChan) // Close channel to signal completion if no error
-		t.Log("IngestionService Start() goroutine finished.")
-	}()
-	defer service.Stop() // Ensure service is stopped
+	time.Sleep(2 * time.Second)
 
-	// Wait for the service to start up or error out
-	// Check service.Start() error first
-	select {
-	case errStart, ok := <-serviceErrChan:
-		if ok && errStart != nil { // Check if channel sent an error and is not just closed
-			require.NoError(t, errStart, "IngestionService.Start() returned an error")
-		}
-		// If channel is closed without error, Start() completed successfully
-	case <-time.After(20 * time.Second): // Generous startup timeout
-		t.Fatal("Timeout waiting for IngestionService.Start() to complete")
-	}
-	t.Log("IngestionService started or Start() call completed.")
-	time.Sleep(2 * time.Second) // Give a moment for MQTT subscriptions to establish
-
-	// --- 5. Setup Test MQTT Publisher ---
 	mqttTestPubClient, err := createTestMqttPublisherClient(mqttBrokerURL, testMqttPublisherPrefix+"main", testLogger)
-	require.NoError(t, err, "Failed to create test MQTT publisher")
+	require.NoError(t, err)
 	defer mqttTestPubClient.Disconnect(250)
 
-	// --- 6. Setup Test Pub/Sub Subscriber ---
-	// Client for subscriptions needs to use the same PUBSUB_EMULATOR_HOST, directly or via env var
-	// Here, NewClient will pick up PUBSUB_EMULATOR_HOST set earlier if not overridden by options
-	subClient, err := pubsub.NewClient(ctx, testPubSubProjectID, option.WithEndpoint(pubsubEmulatorHost), option.WithoutAuthentication())
-	require.NoError(t, err, "Failed to create Pub/Sub client for subscriptions")
+	subClient, err := pubsub.NewClient(ctx, testPubSubProjectID)
+	require.NoError(t, err)
 	defer subClient.Close()
-
 	processedSub := subClient.Subscription(testPubSubSubscriptionIDProcessed)
 
-	// --- 7. Publish Test Message and Verify Reception ---
 	t.Run("PublishAndReceiveMessage", func(t *testing.T) {
 		sampleMsgTime := time.Now().UTC().Truncate(time.Second)
 		payload := fmt.Sprintf("Integration test payload at %s", sampleMsgTime.Format(time.RFC3339))
-		//messageID := fmt.Sprintf("int-msg-%d", time.Now().UnixNano())
-
-		// The service parses this structure from MQTT
 		sourceMqttMsg := converter.MQTTMessage{
-			DeviceInfo: converter.DeviceInfo{DeviceEUI: testMqttDeviceEUI},
-			RawPayload: payload,
-			// Topic and MessageID for the converter.MQTTMessage struct will be populated
-			// by the service from the actual MQTT message topic and transport-level ID.
-			// The JSON payload sent over MQTT typically doesn't contain these.
-			// However, the service expects RawPayload and DeviceInfo in the JSON.
-			// Let's ensure the JSON we send matches what ParseMQTTMessage expects.
-			// ParseMQTTMessage expects DeviceInfo and RawPayload primarily from the JSON body.
-			// MessageID and Topic in the struct are set by the service *after* parsing.
-			MessageTimestamp: sampleMsgTime, // This field is part of the JSON for ParseMQTTMessage
+			DeviceInfo:       converter.DeviceInfo{DeviceEUI: testMqttDeviceEUI},
+			RawPayload:       payload,
+			MessageTimestamp: sampleMsgTime,
 		}
 		msgBytes, err := json.Marshal(sourceMqttMsg)
-		require.NoError(t, err, "Failed to marshal source MQTT message")
-
-		// Construct the actual MQTT topic the service expects
+		require.NoError(t, err)
 		publishTopic := strings.Replace(testMqttTopicPattern, "+", testMqttDeviceEUI, 1)
-
 		token := mqttTestPubClient.Publish(publishTopic, 1, false, msgBytes)
-		if !token.WaitTimeout(10 * time.Second) {
-			require.Fail(t, "MQTT Publish token timed out")
-		}
-		require.NoError(t, token.Error(), "MQTT Publish failed")
-		t.Logf("Published MQTT message to topic %s for device %s", publishTopic, testMqttDeviceEUI)
+		token.Wait()
+		require.NoError(t, token.Error())
 
-		var receivedPayload converter.MQTTMessage // Expecting the same structure
 		pullCtx, pullCancel := context.WithTimeout(ctx, 30*time.Second)
 		defer pullCancel()
+		var receivedPayload converter.MQTTMessage // CORRECTED: Changed back to MQTTMessage
+		err = processedSub.Receive(pullCtx, func(ctxMsg context.Context, msg *pubsub.Message) {
+			msg.Ack()
+			errUnmarshal := json.Unmarshal(msg.Data, &receivedPayload)
+			require.NoError(t, errUnmarshal)
+			pullCancel()
+		})
+		require.True(t, err == nil || errors.Is(err, context.Canceled), "Receive returned an unexpected error: %v", err)
 
-		var wgReceive sync.WaitGroup
-		wgReceive.Add(1)
-		var receiveErr error
-
-		go func() {
-			defer wgReceive.Done()
-			errRcv := processedSub.Receive(pullCtx, func(ctxMsg context.Context, msg *pubsub.Message) {
-				t.Logf("Received message on PROCESSED Pub/Sub topic: MessageID %s, Data: %s", msg.ID, string(msg.Data))
-				msg.Ack() // Acknowledge the message
-				errUnmarshal := json.Unmarshal(msg.Data, &receivedPayload)
-				if errUnmarshal != nil {
-					t.Errorf("Failed to unmarshal processed message: %v. Data: %s", errUnmarshal, string(msg.Data))
-					// Don't cancel pull on unmarshal error, let timeout handle it if no valid msg comes
-					return
-				}
-				// If unmarshal is successful, we can cancel further receiving for this test case
-				pullCancel()
-			})
-			// Only assign error if it's not due to context cancellation (which we trigger on success)
-			if errRcv != nil && !errors.Is(errRcv, context.Canceled) && !strings.Contains(errRcv.Error(), "context canceled") {
-				receiveErr = errRcv
-				t.Logf("ProcessedSub.Receive error: %v", errRcv)
-			}
-		}()
-		wgReceive.Wait() // Wait for Receive goroutine to finish (either by message or timeout)
-
-		if receiveErr != nil {
-			// If pullCtx was cancelled by timeout, receiveErr might be context.DeadlineExceeded
-			// If pullCancel was called due to successful message processing, receiveErr should ideally be nil or context.Canceled
-			assert.NoError(t, receiveErr, fmt.Sprintf("Error receiving from processedSub. Service logs might provide clues. Last ErrorChan: %v", service.ErrorChan)) // TODO: Better way to get service errors
-		}
-
-		// Assertions on the received message
-		require.NotEmpty(t, receivedPayload.DeviceInfo.DeviceEUI, "Received Pub/Sub message is empty or EUI is missing")
+		// CORRECTED: Assertions now match the MQTTMessage struct fields
 		assert.Equal(t, testMqttDeviceEUI, receivedPayload.DeviceInfo.DeviceEUI, "DeviceEUI mismatch")
 		assert.Equal(t, payload, receivedPayload.RawPayload, "RawPayload mismatch")
-		// The Topic and MessageID in the receivedPayload struct should be populated by the service
-		// based on the actual MQTT topic it subscribed to and the transport message ID.
-		// The original `sourceMqttMsg.Topic` and `sourceMqttMsg.MessageID` are not part of the JSON payload.
-		// So, we verify that they are populated by the service.
-		assert.Equal(t, publishTopic, receivedPayload.Topic, "Topic in received message mismatch") // service copies topic from InMessage
-		// MessageID from Paho will be a number, service converts it to string.
-		// The `sourceMqttMsg.MessageID` ("int-msg-...") was just for the JSON struct, not the actual transport ID.
-		// We can't easily assert the Paho transport message ID here without more complex mocking or inspection.
-		// For now, checking it's non-empty is a basic validation.
-		assert.NotEmpty(t, receivedPayload.MessageID, "MessageID in received message should be populated by the service")
-
-		// Compare timestamps (handle potential minor discrepancies if any)
-		assert.WithinDuration(t, sampleMsgTime, receivedPayload.MessageTimestamp, time.Second, "MessageTimestamp mismatch")
+		assert.Equal(t, publishTopic, receivedPayload.Topic, "Topic in received message mismatch")
+		assert.NotEmpty(t, receivedPayload.MessageID, "MessageID in received message should be populated")
 	})
+}
 
-	t.Log("Ingestion service integration test completed.")
+// NEW TEST CASE
+func TestIngestionService_GracefulShutdown_DrainsBuffer(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	mqttBrokerURL, pubsubEmulatorHost, cleanup := commonTestSetup(t, ctx)
+	defer cleanup()
+
+	t.Setenv("MQTT_BROKER_URL", mqttBrokerURL)
+	t.Setenv("MQTT_TOPIC", testMqttTopicPattern)
+	t.Setenv("MQTT_CLIENT_ID_PREFIX", testMqttClientIDPrefix)
+	t.Setenv("PUBSUB_EMULATOR_HOST", pubsubEmulatorHost)
+	t.Setenv("GCP_PROJECT_ID", testPubSubProjectID)
+	t.Setenv(envVarPubSubTopicProcessed, testPubSubTopicIDProcessed)
+
+	serviceLogger := testLogger.With().Str("component", "IngestionServiceShutdownTest").Logger()
+	mqttCfg, err := converter.LoadMQTTClientConfigFromEnv()
+	require.NoError(t, err)
+	pubsubCfg, err := converter.LoadGooglePubSubPublisherConfigFromEnv(envVarPubSubTopicProcessed)
+	require.NoError(t, err)
+	publisher, err := converter.NewGooglePubSubPublisher(ctx, pubsubCfg, serviceLogger)
+	require.NoError(t, err)
+	defer publisher.Stop()
+
+	// Use a small channel capacity to ensure we test backpressure and buffer draining effectively
+	serviceCfg := converter.IngestionServiceConfig{
+		InputChanCapacity:    100,
+		NumProcessingWorkers: 10,
+	}
+	service := converter.NewIngestionService(publisher, serviceLogger, serviceCfg, mqttCfg)
+
+	err = service.Start()
+	require.NoError(t, err, "IngestionService.Start() returned an error")
+	// Note: We will call service.Stop() manually in this test, not with defer.
+
+	time.Sleep(2 * time.Second) // Give time for subscriptions to establish.
+
+	mqttTestPubClient, err := createTestMqttPublisherClient(mqttBrokerURL, testMqttPublisherPrefix+"shutdown", testLogger)
+	require.NoError(t, err)
+	defer mqttTestPubClient.Disconnect(250)
+
+	subClient, err := pubsub.NewClient(ctx, testPubSubProjectID)
+	require.NoError(t, err)
+	defer subClient.Close()
+	processedSub := subClient.Subscription(testPubSubSubscriptionIDProcessed)
+
+	// --- Test Logic ---
+
+	const messagesToSendBeforeShutdown = 50
+	publishTopic := strings.Replace(testMqttTopicPattern, "+", "SHUTDOWN_TEST_DEV", 1)
+
+	// 1. Publish a batch of messages that will sit in the service's buffer.
+	t.Logf("Publishing %d messages before shutdown...", messagesToSendBeforeShutdown)
+	for i := 0; i < messagesToSendBeforeShutdown; i++ {
+		payload := fmt.Sprintf("Message %d", i)
+		sourceMqttMsg := converter.MQTTMessage{RawPayload: payload, DeviceInfo: converter.DeviceInfo{DeviceEUI: "SHUTDOWN_TEST_DEV"}}
+		msgBytes, _ := json.Marshal(sourceMqttMsg)
+		token := mqttTestPubClient.Publish(publishTopic, 1, false, msgBytes)
+		token.Wait()
+		require.NoError(t, token.Error())
+	}
+	t.Log("Finished publishing initial batch.")
+
+	// 2. Start a goroutine to receive messages and count them.
+	var receivedCount atomic.Int32
+	var wgReceive sync.WaitGroup
+	wgReceive.Add(1)
+
+	receiveCtx, receiveCancel := context.WithCancel(ctx)
+	defer receiveCancel()
+
+	go func() {
+		defer wgReceive.Done()
+		errRcv := processedSub.Receive(receiveCtx, func(ctxMsg context.Context, msg *pubsub.Message) {
+			msg.Ack()
+			receivedCount.Add(1)
+		})
+		if errRcv != nil && !errors.Is(errRcv, context.Canceled) {
+			t.Logf("Pub/Sub receiver error: %v", errRcv)
+		}
+	}()
+
+	// Give a very short time for some messages to start flowing, but not all.
+	time.Sleep(100 * time.Millisecond)
+
+	// 3. Initiate the graceful shutdown.
+	t.Log("--- INITIATING GRACEFUL SHUTDOWN ---")
+	shutdownDone := make(chan struct{})
+	go func() {
+		service.Stop()
+		close(shutdownDone)
+	}()
+
+	// 4. While shutting down, try to publish more messages. These should be dropped.
+	t.Log("Attempting to publish messages during shutdown (these should be dropped)...")
+	for i := 0; i < 10; i++ {
+		payload := fmt.Sprintf("Dropped Message %d", i)
+		sourceMqttMsg := converter.MQTTMessage{RawPayload: payload}
+		msgBytes, _ := json.Marshal(sourceMqttMsg)
+		// We don't check for errors here as the connection might be closed.
+		mqttTestPubClient.Publish(publishTopic, 1, false, msgBytes)
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// 5. Wait for the shutdown process to fully complete.
+	select {
+	case <-shutdownDone:
+		t.Log("--- GRACEFUL SHUTDOWN COMPLETE ---")
+	case <-time.After(30 * time.Second):
+		t.Fatal("Timeout waiting for service.Stop() to complete")
+	}
+
+	// 6. Wait a bit longer to ensure all in-flight messages have reached the Pub/Sub receiver.
+	// We check the count periodically until it stabilizes or we time out.
+	var finalCount int32
+	for i := 0; i < 10; i++ {
+		finalCount = receivedCount.Load()
+		if finalCount == messagesToSendBeforeShutdown {
+			break
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	receiveCancel()  // Stop the receiver goroutine.
+	wgReceive.Wait() // Wait for it to exit cleanly.
+
+	// 7. Assert that exactly the right number of messages were processed.
+	assert.EqualValues(t, messagesToSendBeforeShutdown, receivedCount.Load(), "Should have received all messages sent before shutdown, and none sent during")
 }

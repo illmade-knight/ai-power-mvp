@@ -11,13 +11,11 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
-
-// ErrMetadataNotFound is an error returned when metadata for a device cannot be found.
-var ErrMetadataNotFound = errors.New("device metadata not found")
 
 // ErrInvalidMessage is an error for when an incoming MQTT message is invalid for processing.
 var ErrInvalidMessage = errors.New("invalid MQTT message for processing")
@@ -54,8 +52,10 @@ type IngestionService struct {
 	cancelCtx  context.Context
 	cancelFunc context.CancelFunc
 
-	wg                 sync.WaitGroup
-	closeErrorChanOnce sync.Once
+	wg                    sync.WaitGroup
+	closeErrorChanOnce    sync.Once
+	closeMessagesChanOnce sync.Once   // MODIFICATION: Ensures MessagesChan is closed only once.
+	isShuttingDown        atomic.Bool // MODIFICATION: Atomically signals that shutdown has started.
 }
 
 // NewIngestionService creates and initializes a new IngestionService.
@@ -81,6 +81,11 @@ func NewIngestionService(
 // handleIncomingPahoMessage is the Paho MessageHandler.
 // It pushes the payload to the MessagesChan for the workers.
 func (s *IngestionService) handleIncomingPahoMessage(client mqtt.Client, msg mqtt.Message) {
+	if s.isShuttingDown.Load() {
+		s.logger.Warn().Str("topic", msg.Topic()).Msg("Shutdown in progress, Paho message dropped.")
+		return
+	}
+
 	s.logger.Debug().Str("topic", msg.Topic()).Int("payload_size", len(msg.Payload())).Msg("Paho client received message")
 
 	messagePayload := make([]byte, len(msg.Payload()))
@@ -199,22 +204,48 @@ func (s *IngestionService) Start() error {
 
 // Stop gracefully shuts down the IngestionService.
 func (s *IngestionService) Stop() {
-	s.logger.Info().Msg("Stopping IngestionService...")
+	s.logger.Info().Msg("--- Starting Graceful Shutdown ---")
 
+	// 1. Atomically signal that the service is shutting down.
+	// This will cause handleIncomingPahoMessage to stop accepting new messages.
+	s.isShuttingDown.Store(true)
+	s.logger.Info().Msg("Step 1: Shutdown signaled. No new messages will be queued.")
+
+	// 2. Unsubscribe and disconnect from the MQTT broker.
 	if s.pahoClient != nil && s.pahoClient.IsConnected() {
-		s.pahoClient.Disconnect(500) // Increased timeout for graceful disconnect
-		s.logger.Info().Msg("Paho MQTT client disconnected.")
+		if s.mqttClientConfig != nil {
+			topic := s.mqttClientConfig.Topic
+			s.logger.Info().Str("topic", topic).Msg("Step 2a: Unsubscribing from MQTT topic.")
+			if token := s.pahoClient.Unsubscribe(topic); token.WaitTimeout(2*time.Second) && token.Error() != nil {
+				s.logger.Warn().Err(token.Error()).Msg("Failed to unsubscribe during shutdown.")
+			}
+		}
+		s.pahoClient.Disconnect(500)
+		s.logger.Info().Msg("Step 2b: Paho MQTT client disconnected.")
 	}
 
-	s.logger.Info().Msg("Signalling worker goroutines to stop...")
+	// 3. Close the MessagesChan. This signals the worker goroutines (ranging over the channel)
+	// that no more messages will be sent. They will process any remaining messages and then exit.
+	s.logger.Info().Msg("Step 3: Closing message channel. Workers will now drain the buffer.")
+	s.closeMessagesChanOnce.Do(func() {
+		close(s.MessagesChan)
+	})
+
+	// 4. Wait for all worker goroutines to finish processing the messages currently in the channel.
+	s.logger.Info().Msg("Step 4: Waiting for worker goroutines to finish draining...")
+	s.wg.Wait()
+	s.logger.Info().Msg("All worker goroutines have completed.")
+
+	// 5. Cancel the context. This is a good practice to clean up any other resources
+	// that might be listening to this context (e.g., inside the publisher).
+	s.logger.Info().Msg("Step 5: Cancelling context.")
 	s.cancelFunc()
 
-	s.logger.Info().Msg("Waiting for worker goroutines to complete...")
-	s.wg.Wait()
-	s.logger.Info().Msg("All worker goroutines completed.")
-
+	// 6. Stop the publisher, ensuring its internal buffers are also drained.
 	if s.publisher != nil {
+		s.logger.Info().Msg("Step 6: Stopping publisher.")
 		s.publisher.Stop()
+		s.logger.Info().Msg("Publisher stopped.")
 	}
 
 	if s.ErrorChan != nil {
