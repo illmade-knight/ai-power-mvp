@@ -136,7 +136,7 @@ func createTemporarySubscription(
 		return nil, fmt.Errorf("topic %s does not exist in project %s", topicID, client.Project())
 	}
 
-	// Generate a unique subscription MessageID to avoid conflicts.
+	// GeneratePayload a unique subscription MessageID to avoid conflicts.
 	subID := fmt.Sprintf("%s-%s", subNamePrefix, uuid.NewString())
 
 	subConfig := pubsub.SubscriptionConfig{

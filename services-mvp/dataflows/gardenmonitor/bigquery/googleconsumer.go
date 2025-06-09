@@ -26,14 +26,8 @@ type GooglePubSubConsumerConfig struct {
 
 // LoadGooglePubSubConsumerConfigFromEnv loads consumer configuration from environment variables.
 // Renamed from LoadConsumerConfigFromEnv
-func LoadGooglePubSubConsumerConfigFromEnv(subscriptionEnvVar string, defaultSubID string) (*GooglePubSubConsumerConfig, error) {
-	subID := os.Getenv(subscriptionEnvVar)
-	if subID == "" {
-		subID = defaultSubID
-		if defaultSubID == "" {
-			return nil, fmt.Errorf("environment variable %s for Pub/Sub subscription MessageID not set and no default provided", subscriptionEnvVar)
-		}
-	}
+func LoadGooglePubSubConsumerConfigFromEnv() (*GooglePubSubConsumerConfig, error) {
+	subID := os.Getenv("PUBSUB_SUBSCRIPTION_ID_GARDEN_MONITOR_INPUT")
 
 	cfg := &GooglePubSubConsumerConfig{
 		ProjectID:              os.Getenv("GCP_PROJECT_ID"),
@@ -74,6 +68,9 @@ func NewGooglePubSubConsumer(ctx context.Context, cfg *GooglePubSubConsumerConfi
 		return nil, fmt.Errorf("pubsub.NewClient for subscription %s: %w", cfg.SubscriptionID, err)
 	}
 	sub := client.Subscription(cfg.SubscriptionID)
+
+	logger.Info().Str("subscription_id", cfg.SubscriptionID).Msg("Listening for messages")
+
 	sub.ReceiveSettings.MaxOutstandingMessages = cfg.MaxOutstandingMessages
 	sub.ReceiveSettings.NumGoroutines = cfg.NumGoroutines
 

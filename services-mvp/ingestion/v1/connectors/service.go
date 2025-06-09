@@ -385,7 +385,7 @@ func (s *IngestionService) initAndConnectMQTTClient() error {
 	opts := mqtt.NewClientOptions()
 	s.logger.Debug().Str("broker", s.mqttClientConfig.BrokerURL).Msg("adding broker") //.Interface("config", s.mqttClientConfig)
 	opts.AddBroker(s.mqttClientConfig.BrokerURL)
-	// Generate a unique client MessageID
+	// GeneratePayload a unique client MessageID
 	// ClientID must be unique for each connection to the broker.
 	// Appending a timestamp or random string can help ensure uniqueness.
 	uniqueSuffix := time.Now().UnixNano() % 1000000 // Example suffix

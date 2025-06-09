@@ -16,7 +16,6 @@ type BigQueryInserterConfig struct {
 	DatasetID       string
 	TableID         string
 	CredentialsFile string // Optional: For production if not using ADC
-	// EmulatorHost field was removed; client injection handles emulator specifics
 }
 
 // LoadBigQueryInserterConfigFromEnv loads BigQuery configuration from environment variables.
@@ -41,7 +40,6 @@ func LoadBigQueryInserterConfigFromEnv() (*BigQueryInserterConfig, error) {
 }
 
 // NewProductionBigQueryClient creates a BigQuery client suitable for production environments.
-// It now accepts a BigQueryInserterConfig struct.
 func NewProductionBigQueryClient(ctx context.Context, cfg *BigQueryInserterConfig, logger zerolog.Logger) (*bigquery.Client, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("BigQueryInserterConfig cannot be nil for NewProductionBigQueryClient")
@@ -69,21 +67,20 @@ func NewProductionBigQueryClient(ctx context.Context, cfg *BigQueryInserterConfi
 
 // BigQueryInserter implements DecodedDataInserter for Google BigQuery.
 type BigQueryInserter struct {
-	client    *bigquery.Client // Client is now injected
+	client    *bigquery.Client
 	table     *bigquery.Table
 	inserter  *bigquery.Inserter
 	logger    zerolog.Logger
-	projectID string // Store for reference/logging
+	projectID string
 	datasetID string
 	tableID   string
 }
 
 // NewBigQueryInserter creates a new inserter for MeterReading data into BigQuery.
-// It now accepts a pre-configured *bigquery.Client.
 func NewBigQueryInserter(
 	ctx context.Context,
-	client *bigquery.Client, // Injected client
-	cfg *BigQueryInserterConfig, // Still need dataset and table MessageID
+	client *bigquery.Client,
+	cfg *BigQueryInserterConfig,
 	logger zerolog.Logger,
 ) (*BigQueryInserter, error) {
 	if client == nil {
@@ -96,13 +93,11 @@ func NewBigQueryInserter(
 		return nil, fmt.Errorf("DatasetID and TableID must be provided in BigQueryInserterConfig")
 	}
 
-	projectID := client.Project() // Get project MessageID from the injected client
+	projectID := client.Project()
 	if projectID == "" && cfg.ProjectID == "" {
-		// This case should be rare if client is properly initialized.
-		// If client.Project() is empty, and cfg.ProjectID is also empty, it's an issue.
-		return nil, fmt.Errorf("project MessageID could not be determined from client or config")
+		return nil, fmt.Errorf("project ID could not be determined from client or config")
 	} else if projectID == "" {
-		projectID = cfg.ProjectID // Fallback to config if client doesn't expose it easily (shouldn't happen)
+		projectID = cfg.ProjectID
 		logger.Warn().Str("config_project_id", projectID).Msg("Using ProjectID from config as client.Project() was empty.")
 	}
 
@@ -112,21 +107,19 @@ func NewBigQueryInserter(
 	meta, err := tableRef.Metadata(ctx)
 	if err != nil {
 		if strings.Contains(err.Error(), "notFound") {
-			logger.Warn().Str("dataset", cfg.DatasetID).Str("table", cfg.TableID).Msg("BigQuery table not found. Attempting to create with inferred schema from MeterReading.")
+			logger.Warn().Str("dataset", cfg.DatasetID).Str("table", cfg.TableID).Msg("BigQuery table not found. Attempting to create with inferred schema from GardenMonitorPayload.")
 			inferredSchema, inferErr := bigquery.InferSchema(GardenMonitorPayload{})
 			if inferErr != nil {
-				// client.Close() // Client lifecycle is managed by the caller now
-				return nil, fmt.Errorf("failed to infer schema for MeterReading: %w", inferErr)
+				return nil, fmt.Errorf("failed to infer schema for GardenMonitorPayload: %w", inferErr)
 			}
 			tableMetadata := &bigquery.TableMetadata{
 				Schema: inferredSchema,
 				TimePartitioning: &bigquery.TimePartitioning{
 					Type:  bigquery.DayPartitioningType,
-					Field: "original_mqtt_time",
+					Field: "Timestamp",
 				},
 			}
 			if createErr := tableRef.Create(ctx, tableMetadata); createErr != nil {
-				// client.Close()
 				return nil, fmt.Errorf("failed to create BigQuery table %s.%s: %w", cfg.DatasetID, cfg.TableID, createErr)
 			}
 			logger.Info().Str("dataset", cfg.DatasetID).Str("table", cfg.TableID).Msg("BigQuery table created with inferred schema.")
@@ -138,22 +131,27 @@ func NewBigQueryInserter(
 	}
 
 	return &BigQueryInserter{
-		client:    client, // Store the injected client
+		client:    client,
 		table:     tableRef,
 		inserter:  tableRef.Inserter(),
 		logger:    logger,
-		projectID: projectID, // Store for reference
+		projectID: projectID,
 		datasetID: cfg.DatasetID,
 		tableID:   cfg.TableID,
 	}, nil
 }
 
-// Insert streams a single MeterReading to BigQuery.
-func (i *BigQueryInserter) Insert(ctx context.Context, w *GardenMonitorPayload) error {
+// InsertBatch streams a batch of MeterReadings to BigQuery.
+// This method is modified to accept a slice of payloads for batch insertion.
+func (i *BigQueryInserter) InsertBatch(ctx context.Context, readings []*GardenMonitorPayload) error {
+	if len(readings) == 0 {
+		i.logger.Info().Msg("InsertBatch called with an empty slice. Nothing to do.")
+		return nil
+	}
 
-	itemsToInsert := []*GardenMonitorPayload{w}
-	if err := i.inserter.Put(ctx, itemsToInsert); err != nil {
-		i.logger.Error().Err(err).Str("uid", w.UID).Msg("Failed to insert row into BigQuery")
+	err := i.inserter.Put(ctx, readings)
+	if err != nil {
+		i.logger.Error().Err(err).Int("batch_size", len(readings)).Msg("Failed to insert rows into BigQuery")
 		if multiErr, ok := err.(bigquery.PutMultiError); ok {
 			for _, rowErr := range multiErr {
 				i.logger.Error().Str("row_index", fmt.Sprintf("%d", rowErr.RowIndex)).Msgf("BigQuery insert error for row: %v", rowErr.Errors)
@@ -161,14 +159,13 @@ func (i *BigQueryInserter) Insert(ctx context.Context, w *GardenMonitorPayload) 
 		}
 		return fmt.Errorf("bigquery Inserter.Put: %w", err)
 	}
-	i.logger.Debug().Str("uid", w.UID).Msg("Successfully inserted row into BigQuery")
+
+	i.logger.Info().Int("batch_size", len(readings)).Msg("Successfully inserted batch into BigQuery")
 	return nil
 }
 
-// Close is now a no-op as the client lifecycle is managed externally.
-// The caller of NewBigQueryInserter is responsible for closing the client it provided.
+// Close is a no-op as the client lifecycle is managed externally.
 func (i *BigQueryInserter) Close() error {
 	i.logger.Info().Msg("BigQueryInserter.Close() called. Client lifecycle is managed externally.")
-	// Do not close i.client here, as it was injected.
 	return nil
 }
