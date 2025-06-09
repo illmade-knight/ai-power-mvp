@@ -1,0 +1,11 @@
+{
+  "broker_url": "tcp://broker.emqx.io:1883",
+  "topic": "garden_monitor/861275073104248",
+  "client_id_prefix": "illmade-broker-001",
+  "username": "",
+  "password": "",
+  "ca_cert_file": "",
+  "client_cert_file": "",
+  "client_key_file": "",
+  "insecure_skip_verify": true
+}
