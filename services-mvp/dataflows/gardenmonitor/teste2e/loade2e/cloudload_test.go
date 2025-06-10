@@ -4,18 +4,17 @@ package main_test
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
-	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/google/uuid"
+	"github.com/illmade-knight/ai-power-mpv/pkg/helpers/loadgen"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
@@ -34,10 +33,6 @@ import (
 	"github.com/illmade-knight/ai-power-mpv/pkg/bqstore"
 	"github.com/illmade-knight/ai-power-mpv/pkg/mqttconverter"
 	"github.com/illmade-knight/ai-power-mpv/pkg/types"
-
-	// Import the device simulation logic
-	// NOTE: Ensure this import path matches your project structure.
-	"load_test/apps/messagegen/messenger"
 )
 
 // --- Cloud Load Test Constants ---
@@ -59,6 +54,11 @@ const (
 	cloudTestMqttHTTPPort   = ":9092"
 	cloudTestBqHTTPPort     = ":9093"
 	cloudLoadTestTimeout    = 10 * time.Minute // Increased timeout for the load test
+)
+
+// --- Test Flags ---
+var (
+	keepDataset = flag.Bool("keep-dataset", false, "If true, the BigQuery dataset will not be deleted after the test, but will expire automatically.")
 )
 
 // TestE2E_Cloud_LoadTest subjects the entire pipeline to load from simulated devices.
@@ -101,7 +101,7 @@ func TestE2E_Cloud_LoadTest(t *testing.T) {
 	defer pubsubCleanup()
 
 	log.Info().Str("dataset", datasetID).Str("table", tableID).Msg("LoadTest: Setting up real BigQuery resources...")
-	bqCleanup := setupRealBigQuery(t, ctx, projectID, datasetID, tableID)
+	bqCleanup := setupRealBigQuery(t, ctx, projectID, datasetID, tableID, *keepDataset)
 	defer bqCleanup()
 
 	log.Info().Msg("LoadTest: Pausing to allow cloud resources to initialize...")
@@ -201,41 +201,27 @@ func TestE2E_Cloud_LoadTest(t *testing.T) {
 	time.Sleep(10 * time.Second)
 
 	// --- 6. Start Load Generation ---
-	log.Info().
-		Int("devices", loadTestNumDevices).
-		Float64("rate_per_device", loadTestRatePerDevice).
-		Dur("duration", loadTestDuration).
-		Msg("LoadTest: Starting load generator.")
+	log.Info().Msg("LoadTest: Configuring and starting load generator...")
+	loadgenLogger := log.With().Str("service", "load-generator").Logger()
 
-	// Create an MQTT client specifically for the load generator
-	loadGenMqttClient, err := createTestMqttPublisherClient(mqttBrokerURL, "cloud-load-test-publisher")
-	require.NoError(t, err)
-	defer loadGenMqttClient.Disconnect(250)
+	// 6.1 Create the MQTT client for the load generator
+	loadgenClient := loadgen.NewMqttClient(mqttBrokerURL, testMqttTopicPattern, 1, loadgenLogger)
 
-	// Initialize the device generator from the messenger package
-	deviceGenConfig := &messenger.DeviceGeneratorConfig{
-		NumDevices:       loadTestNumDevices,
-		MsgRatePerDevice: loadTestRatePerDevice,
-	}
-	deviceGenerator, err := messenger.NewDeviceGenerator(deviceGenConfig, log.Logger)
-	require.NoError(t, err, "Failed to create device generator")
-	deviceGenerator.CreateDevices()
-
-	// Run the load generation in the background
-	loadCtx, loadCancel := context.WithTimeout(ctx, loadTestDuration)
-	defer loadCancel()
-	var wg sync.WaitGroup
-	for _, device := range deviceGenerator.Devices {
-		wg.Add(1)
-		go func(d *messenger.Device) {
-			defer wg.Done()
-			runDevice(loadCtx, t, loadGenMqttClient, d)
-		}(device)
+	// 6.2 Create the simulated devices
+	devices := make([]*loadgen.Device, loadTestNumDevices)
+	payloadGenerator := &gardenMonitorPayloadGenerator{}
+	for i := 0; i < loadTestNumDevices; i++ {
+		devices[i] = &loadgen.Device{
+			ID:               fmt.Sprintf("load-test-device-%d", i),
+			MessageRate:      loadTestRatePerDevice,
+			PayloadGenerator: payloadGenerator,
+		}
 	}
 
-	// Wait for the load generation to finish
-	wg.Wait()
-	log.Info().Msg("LoadTest: Load generation finished.")
+	// 6.3 Create and run the load generator
+	loadGenerator := loadgen.NewLoadGenerator(loadgenClient, devices, loadgenLogger)
+	err = loadGenerator.Run(ctx, loadTestDuration)
+	require.NoError(t, err, "Load generator returned an error")
 
 	// --- 7. Verify Data in Real BigQuery ---
 	expectedMessages := int(float64(loadTestNumDevices) * loadTestRatePerDevice * loadTestDuration.Seconds())
@@ -297,46 +283,6 @@ VerificationLoop:
 	log.Info().Msg("LoadTest: Verification successful!")
 }
 
-// runDevice is a helper function that runs the message publishing loop for a single device.
-// This logic is adapted from your loadgen.go main simulation loop.
-func runDevice(ctx context.Context, t *testing.T, mqClient mqtt.Client, d *messenger.Device) {
-	deviceLogger := log.With().Str("device_eui", d.GetEUI()).Logger()
-	topic := strings.Replace(testMqttTopicPattern, "+", d.GetEUI(), 1)
-	interval := time.Duration(float64(time.Second) / d.MessageRate())
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
-	deviceLogger.Info().Float64("rate_hz", d.MessageRate()).Msg("Starting publisher for device")
-
-	for {
-		select {
-		case <-ticker.C:
-			// The device's GeneratePayload creates a `types.GardenMonitorPayload`,
-			// which is what our ingestion service expects after JSON marshaling.
-			payload, err := d.GeneratePayload()
-			require.NoError(t, err, "Failed to generate device payload")
-
-			// The ingestion service expects a specific outer message structure.
-			msgBytes, err := json.Marshal(payload)
-			require.NoError(t, err)
-
-			token := mqClient.Publish(topic, 1, false, msgBytes)
-			// Fire-and-forget publish to maximize throughput.
-			// In a real test, you might add lightweight, non-blocking error handling here.
-			go func() {
-				_ = token.WaitTimeout(2 * time.Second) // Wait briefly
-				if token.Error() != nil {
-					deviceLogger.Warn().Err(token.Error()).Msg("Failed to publish message")
-				}
-			}()
-
-		case <-ctx.Done():
-			deviceLogger.Info().Msg("Stopping publisher for device")
-			return
-		}
-	}
-}
-
 // --- Helper functions (setupRealPubSub, setupRealBigQuery, etc.) are assumed to be identical ---
 // --- to those in cloude2e_test.go and are included here for completeness.             ---
 
@@ -380,7 +326,7 @@ func setupRealPubSub(t *testing.T, ctx context.Context, projectID, topicID, subI
 }
 
 // setupRealBigQuery creates a dataset and table on GCP for the test run.
-func setupRealBigQuery(t *testing.T, ctx context.Context, projectID, datasetID, tableID string) func() {
+func setupRealBigQuery(t *testing.T, ctx context.Context, projectID, datasetID, tableID string, keep bool) func() {
 	t.Helper()
 	client, err := bigquery.NewClient(ctx, projectID)
 	require.NoError(t, err, "Failed to create real BigQuery client")
@@ -406,6 +352,11 @@ func setupRealBigQuery(t *testing.T, ctx context.Context, projectID, datasetID, 
 	t.Logf("Created BigQuery table %s in dataset %s", tableID, datasetID)
 
 	return func() {
+		defer client.Close()
+		if keep {
+			t.Logf("Keeping BigQuery dataset '%s' due to -keep-dataset flag. It will expire automatically.", datasetID)
+			return
+		}
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
 		t.Logf("Tearing down Cloud BigQuery resources...")
@@ -415,7 +366,6 @@ func setupRealBigQuery(t *testing.T, ctx context.Context, projectID, datasetID, 
 		} else {
 			t.Logf("Deleted BQ dataset '%s'", datasetID)
 		}
-		client.Close()
 	}
 }
 
@@ -442,21 +392,4 @@ func setupMosquittoContainer(t *testing.T, ctx context.Context) (brokerURL strin
 	brokerURL = fmt.Sprintf("tcp://%s:%s", host, port.Port())
 
 	return brokerURL, func() { require.NoError(t, container.Terminate(ctx)) }
-}
-
-// createTestMqttPublisherClient creates an MQTT client for publishing test messages.
-func createTestMqttPublisherClient(brokerURL string, clientID string) (mqtt.Client, error) {
-	opts := mqtt.NewClientOptions().
-		AddBroker(brokerURL).
-		SetClientID(clientID).
-		SetConnectTimeout(10 * time.Second).
-		SetAutoReconnect(true).
-		SetConnectRetry(true).
-		SetConnectRetryInterval(5 * time.Second)
-
-	client := mqtt.NewClient(opts)
-	if token := client.Connect(); token.WaitTimeout(15*time.Second) && token.Error() != nil {
-		return nil, fmt.Errorf("test mqtt publisher Connect(): %w", token.Error())
-	}
-	return client, nil
 }
