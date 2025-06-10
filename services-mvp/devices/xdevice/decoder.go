@@ -19,7 +19,7 @@ type DecodedPayload struct {
 
 const (
 	// Expected byte length of the decoded payload for XDevice.
-	// UID (4) + Reading (4) + AvgCurrent (4) + MaxCurrent (4) + MaxVoltage (4) + AvgVoltage (4) = 24 bytes
+	// DE (4) + Reading (4) + AvgCurrent (4) + MaxCurrent (4) + MaxVoltage (4) + AvgVoltage (4) = 24 bytes
 	expectedPayloadLengthBytes = 24
 )
 
@@ -41,7 +41,7 @@ func DecodePayload(rawPayloadHex string) (*DecodedPayload, error) {
 	decoded := &DecodedPayload{}
 	offset := 0
 
-	// UID: first 4 bytes, interpreted as a string
+	// DE: first 4 bytes, interpreted as a string
 	decoded.UID = string(payloadBytes[offset : offset+4])
 	offset += 4
 

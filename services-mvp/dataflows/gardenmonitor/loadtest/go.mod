@@ -14,10 +14,6 @@ require (
 	google.golang.org/api v0.236.0
 )
 
-replace github.com/illmade-knight/ai-power-mvp/services-mvp/dataflows/gardenmonitor/ingestion => ../ingestion
-
-replace github.com/illmade-knight/ai-power-mvp/services-mvp/dataflows/gardenmonitor/bigquery => ../bigquery
-
 require (
 	cloud.google.com/go v0.121.0 // indirect
 	cloud.google.com/go/auth v0.16.1 // indirect

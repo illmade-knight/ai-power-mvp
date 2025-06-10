@@ -354,12 +354,12 @@ VerificationLoop:
 	require.Len(t, receivedRows, messageCount, "The number of rows in BigQuery does not match the number of messages sent.")
 
 	finalRow := receivedRows[len(receivedRows)-1]
-	assert.Equal(t, lastTestPayload.DE, finalRow.UID, "UID mismatch")
+	assert.Equal(t, lastTestPayload.DE, finalRow.UID, "DE mismatch")
 	assert.Equal(t, lastTestPayload.SIM, finalRow.SIM, "SIM mismatch")
 	assert.Equal(t, lastTestPayload.Version, finalRow.Version, "Version mismatch")
 	assert.Equal(t, lastTestPayload.Battery, finalRow.Battery, "Battery mismatch")
 	assert.Equal(t, lastTestPayload.Temperature, finalRow.Temperature, "Temperature mismatch")
 	assert.Equal(t, lastTestPayload.SoilMoisture, finalRow.SoilMoisture, "SoilMoisture mismatch")
 
-	t.Logf("Successfully verified E2E data flow in BigQuery for UID: %s", testMqttDeviceUID)
+	t.Logf("Successfully verified E2E data flow in BigQuery for DE: %s", testMqttDeviceUID)
 }

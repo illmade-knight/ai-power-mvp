@@ -12,15 +12,15 @@ import (
 )
 
 // Helper function to create a valid hex payload for testing.
-// UID is now a string, expected to be 4 characters long.
+// DE is now a string, expected to be 4 characters long.
 func createValidTestHexPayload(uid string, reading, avgCurrent, maxCurrent, maxVoltage, avgVoltage float32) (string, error) {
 	if len(uid) != 4 {
-		return "", fmt.Errorf("test UID must be 4 characters long, got %d", len(uid))
+		return "", fmt.Errorf("test DE must be 4 characters long, got %d", len(uid))
 	}
 	buf := make([]byte, expectedPayloadLengthBytes)
 	offset := 0
 
-	// Copy UID string bytes
+	// Copy DE string bytes
 	copy(buf[offset:offset+4], []byte(uid))
 	offset += 4
 
@@ -38,7 +38,7 @@ func createValidTestHexPayload(uid string, reading, avgCurrent, maxCurrent, maxV
 }
 
 func TestDecodeXDevicePayload_ValidPayload(t *testing.T) {
-	expectedUID := "XUID" // 4-character string UID
+	expectedUID := "XUID" // 4-character string DE
 	expectedReading := float32(25.67)
 	expectedAvgCurrent := float32(1.23)
 	expectedMaxCurrent := float32(2.55)
@@ -59,7 +59,7 @@ func TestDecodeXDevicePayload_ValidPayload(t *testing.T) {
 	require.NoError(t, err, "DecodePayload failed for a valid payload")
 	require.NotNil(t, decoded, "Decoded payload should not be nil for a valid input")
 
-	assert.Equal(t, expectedUID, decoded.UID, "UID mismatch")
+	assert.Equal(t, expectedUID, decoded.UID, "DE mismatch")
 	assert.InDelta(t, expectedReading, decoded.Reading, 0.001, "Reading mismatch")
 	assert.InDelta(t, expectedAvgCurrent, decoded.AverageCurrent, 0.001, "AverageCurrent mismatch")
 	assert.InDelta(t, expectedMaxCurrent, decoded.MaxCurrent, 0.001, "MaxCurrent mismatch")
@@ -141,7 +141,7 @@ func TestDecodeXDevicePayload_InvalidLength(t *testing.T) {
 }
 
 func TestDecodeXDevicePayload_EdgeFloatValues(t *testing.T) {
-	uid := "EDGE" // 4-character string UID
+	uid := "EDGE" // 4-character string DE
 	payloadZero, _ := createValidTestHexPayload(uid, 0.0, 0.0, 0.0, 0.0, 0.0)
 	payloadNegative, _ := createValidTestHexPayload(uid, -123.45, -0.5, -10.0, -300.0, -200.0)
 	nan := math.Float32frombits(0x7FC00000)
@@ -179,14 +179,14 @@ func TestDecodeXDevicePayload_EdgeFloatValues(t *testing.T) {
 }
 
 func TestCreateValidTestHexPayload_UIDLength(t *testing.T) {
-	t.Run("UID too short", func(t *testing.T) {
+	t.Run("DE too short", func(t *testing.T) {
 		_, err := createValidTestHexPayload("ABC", 1, 1, 1, 1, 1)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "test UID must be 4 characters long")
+		assert.Contains(t, err.Error(), "test DE must be 4 characters long")
 	})
-	t.Run("UID too long", func(t *testing.T) {
+	t.Run("DE too long", func(t *testing.T) {
 		_, err := createValidTestHexPayload("ABCDE", 1, 1, 1, 1, 1)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "test UID must be 4 characters long")
+		assert.Contains(t, err.Error(), "test DE must be 4 characters long")
 	})
 }
