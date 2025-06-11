@@ -1,89 +1,86 @@
-## Create resources Deploy services 
-
 ### **services.yaml**
 
-This file is the single source of truth for all services and resources. It now defines both a test and a production environment.
+This file is the single source of truth for all services and resources. It defines environments, service-specific metadata (like health checks and MQTT configuration), and source code paths.
 
 ````yaml
 # The single source of truth for all services and resources in the system.
-# Used by the 'provision.go' script to manage cloud infrastructure.
+# This version uses snake_case to match the Go struct tags in types.go.
 
-defaultProjectID: "your-prod-gcp-project-id" # CHANGE THIS
-defaultLocation: "US"
+default_project_id: "gemini-power-test"
+default_location: "EU" # For multi-region resources like GCS/BigQuery
+default_region: "europe-west1" # Specific region for Cloud Run services
 
 environments:
-  test:
-    projectID: "your-test-gcp-project-id" # CHANGE THIS
-  production:
-    projectID: "your-prod-gcp-project-id" # CHANGE THIS
+   test:
+      project_id: "gemini-power-test"
+      default_region: "europe-west1" # Can override the top-level default
+   production:
+      project_id: "your-prod-gcp-project-id" # CHANGE THIS
+      default_region: "us-central1"
 
 services:
-  - name: "ingestion-service"
-    description: "Receives data from MQTT and publishes to Pub/Sub."
-  - name: "analysis-service"
-    description: "Consumes from Pub/Sub and inserts into BigQuery."
+   - name: "ingestion-service"
+     description: "Receives data from MQTT and publishes to Pub/Sub."
+     service_account: "ingestion-sa@your-gcp-project.iam.gserviceaccount.com"
+     source_path: "cmd/ingestion" # Path from project root
+     health_check:
+        port: 8080
+        path: "/healthz"
+     metadata:
+        # Service-specific configuration that will become environment variables
+        broker_url: "tcp://broker.emqx.io:1883"
+        topic: "garden_monitor"
+        client_id_prefix: "garden_broker"
+
+   - name: "analysis-service"
+     description: "Consumes from Pub/Sub and inserts into BigQuery."
+     service_account: "analysis-sa@your-gcp-project.iam.gserviceaccount.com"
+     source_path: "cmd/bigquery" # Path from project root
+     health_check:
+        port: 8080
+        path: "/healthz"
 
 dataflows:
-  - name: "test-mqtt-to-bigquery"
-    description: "Dataflow for the test environment."
-    services:
-      - "ingestion-service"
-      - "analysis-service"
-    # The 'ephemeral' lifecycle could be used here if you want to automatically
-    # clean up test resources, similar to the integration test.
-    # For now, they are permanent.
+   - name: "test-mqtt-to-bigquery"
+     description: "Dataflow for the test environment."
+     services:
+        - "ingestion-service"
+        - "analysis-service"
+     lifecycle:
+        strategy: "permanent"
 
-  - name: "prod-mqtt-to-bigquery"
-    description: "The main production dataflow pipeline."
-    services:
-      - "ingestion-service"
-      - "analysis-service"
-    # No 'lifecycle' section means production resources are permanent.
+   - name: "prod-mqtt-to-bigquery"
+     description: "The main production dataflow pipeline."
+     services:
+        - "ingestion-service"
+        - "analysis-service"
 
 resources:
-  # --- Test Resources ---
-  pubSubTopics:
-    - name: "test-device-data"
-      producerService: "ingestion-service"
-  pubSubSubscriptions:
-    - name: "test-analysis-service-sub"
-      topic: "test-device-data"
-      consumerService: "analysis-service"
-  bigQueryDatasets:
-    - name: "test_device_analytics"
-      description: "Dataset for storing test telemetry."
-  bigQueryTables:
-    - name: "test_monitor_payloads"
-      dataset: "test_device_analytics"
-      accessingServices: ["analysis-service"]
-      schemaSourceType: "go_struct"
-      schemaSourceIdentifier: "github.com/illmade-knight/ai-power-mpv/pkg/types.GardenMonitorPayload"
-````
+   # --- Test Resources ---
+   pubsub_topics:
+      - name: "test-device-data"
+        producer_service: "ingestion-service"
+   pubsub_subscriptions:
+      - name: "test-analysis-service-sub"
+        topic: "test-device-data"
+        consumer_service: "analysis-service"
+   bigquery_datasets:
+      - name: "test_device_analytics"
+        description: "Dataset for storing test telemetry."
+   bigquery_tables:
+      - name: "test_monitor_payloads"
+        dataset: "test_device_analytics"
+        accessing_services: ["analysis-service"]
+        schema_source_type: "go_struct"
+        schema_source_identifier: "github.com/illmade-knight/ai-power-mpv/pkg/types.GardenMonitorPayload"
 
-````yaml
-  # --- Production Resources ---
-  pubSubTopics:
-    - name: "prod-device-data"
-      producerService: "ingestion-service"
-  pubSubSubscriptions:
-    - name: "prod-analysis-service-sub"
-      topic: "prod-device-data"
-      consumerService: "analysis-service"
-  bigQueryDatasets:
-    - name: "prod_device_analytics"
-      description: "Dataset for storing processed device telemetry."
-  bigQueryTables:
-    - name: "prod_monitor_payloads"
-      dataset: "prod_device_analytics"
-      accessingServices: ["analysis-service"]
-      schemaSourceType: "go_struct"
-      schemaSourceIdentifier: "github.com/illmade-knight/ai-power-mpv/pkg/types.GardenMonitorPayload"
+   # gcs_buckets: [] # GCS section is optional
 
 ````
 
-### **Further Steps: Staged Deployment (Test then Production)**
+### **Further Steps: Staged Deployment and Management**
 
-Here are the next steps to get your services running in Google Cloud, starting with the test environment.
+This guide outlines the full lifecycle for your pipeline: provisioning infrastructure, deploying services, and tearing it all down when it's no longer needed.
 
 #### **Prerequisites**
 
@@ -92,57 +89,49 @@ Here are the next steps to get your services running in Google Cloud, starting w
 3. **Enable APIs**: Make sure the "Pub/Sub", "BigQuery", and "Cloud Build" APIs are enabled for **both** projects.
 4. **Go Environment**: Have a working Go environment.
 
-### **Step 1: Deploy to the Test Environment**
+### **Step 1: Provision Infrastructure & Generate Scripts**
 
-First, provision and deploy everything to your test project.
+This step is run locally. It connects to GCP to create resources and then generates deployment scripts tailored for a specific environment.
 
-1. **Update services.yaml**: Open services.yaml and set the correct project IDs for your test and production environments.
-2. **Provision Test Infrastructure**: Run the provision.go script, specifying the test environment and dataflow.  
-   go run deploy/provision.go \\  
-   \-services-def=services.yaml \\  
-   \-env=test \\  
-   \-dataflow=test-mqtt-to-bigquery
+1. **Update services.yaml**: Open the services.yaml file and set the correct project IDs and any other environment-specific values (like the default\_region or mqtt\_broker\_url).
+2. Run the Provisioning Script:  
+   From your terminal, run the provision.go script from within the deploy directory. Use the \-env flag to specify your target environment.
+   * **For the Test Environment:**  
+     \# This will save the scripts in your project's root directory  
+     go run provision.go \-services-def=../services.yaml \-env=test \-output-dir=../
 
-   This will create the resources prefixed with test- in your test project.
-3. **Configure Services for Test**:
-    * In cmd/ingestion/config.yaml, update the project\_id and publisher.topic\_id to point to the **test** project and test-device-data topic.
-    * In cmd/bigquery/config.yaml, update the project\_id and all resource IDs (subscription\_id, dataset\_id, table\_id) to their **test** versions (e.g., test-analysis-service-sub).
-4. Deploy Services to Test Project:  
-   Use gcloud run deploy to deploy each service from its source directory. Make sure your gcloud is configured to point to your test project (gcloud config set project your-test-gcp-project-id).
-    * **Deploy Ingestion Service to Test**:  
-      \# From the cmd/ingestion directory  
-      gcloud run deploy ingestion-service-test \\  
-      \--source . \--platform managed \--region your-region \--allow-unauthenticated
+   After the script finishes, you will find two new files in your project's root directory:
 
-    * **Deploy Analysis Service to Test**:  
-      \# From the cmd/bigquery directory  
-      gcloud run deploy analysis-service-test \\  
-      \--source . \--platform managed \--region your-region \--allow-unauthenticated
+   * deploy\_ingestion.sh (or .bat on Windows)
+   * deploy\_analysis.sh (or .bat on Windows)
 
-At this point, you can thoroughly test the entire pipeline in your isolated test environment.
+### **Step 2: Deploy the Services**
 
-### **Step 2: Deploy to Production**
+Now, use the generated shell scripts to deploy your applications to Cloud Run.
 
-Once you have verified that everything works correctly in the test environment, you can proceed to deploy to production.
+1. **Review the Scripts**: Open the generated script files to see the gcloud commands that will be run. They should be fully configured.
+2. **Make Scripts Executable** (Linux/macOS):  
+   chmod \+x deploy\_ingestion.sh  
+   chmod \+x deploy\_analysis.sh
 
-1. **Provision Production Infrastructure**: Run the provision.go script again, but this time targeting the production environment.  
-   go run deploy/provision.go \\  
-   \-services-def=services.yaml \\  
-   \-env=production \\  
-   \-dataflow=prod-mqtt-to-bigquery
+3. Run the Deployment Scripts:  
+   Execute the scripts to deploy the services. Make sure your gcloud CLI is logged in to the correct project (gcloud config set project your-target-project-id).  
+   ./deploy\_ingestion.sh  
+   ./deploy\_analysis.sh
 
-2. **Configure Services for Production**:
-    * Change the config.yaml files for both services to use the **production** project ID and resource names (e.g., prod-device-data).
-3. Deploy Services to Production Project:  
-   Change your gcloud configuration to point to your production project (gcloud config set project your-prod-gcp-project-id) and run the deployment commands again.
-    * **Deploy Ingestion Service to Production**:  
-      \# From the cmd/ingestion directory  
-      gcloud run deploy ingestion-service-prod \\  
-      \--source . \--platform managed \--region your-region \--allow-unauthenticated
+### **Step 3: Tear Down an Environment (Optional)**
 
-    * **Deploy Analysis Service to Production**:  
-      \# From the cmd/bigquery directory  
-      gcloud run deploy analysis-service-prod \\  
-      \--source . \--platform managed \--region your-region \--allow-unauthenticated
+When you no longer need an environment (e.g., after testing is complete), you can tear down all associated resources.
 
-Your full data pipeline is now running in production. This staged approach ensures a much safer and more reliable deployment process.
+1. Run the Provisioning Script in Teardown Mode:  
+   Run the same provision.go script, but add the \-teardown flag.  
+   go run provision.go \-services-def=../services.yaml \-env=test \-teardown
+
+2. **Confirm the Action**: The script will prompt you for confirmation. This is a critical safeguard. Type the name of the environment (test in this case) to proceed. The script will then delete the BigQuery tables, Pub/Sub subscriptions, and topics.
+3. **Delete the Cloud Run Services**: The teardown process also generates service deletion scripts (teardown\_ingestion.sh, etc.). Run these to remove the Cloud Run services themselves.  
+   \# (On Linux/macOS)  
+   chmod \+x teardown\_\*.sh  
+   ./teardown\_ingestion.sh  
+   ./teardown\_analysis.sh
+
+This completes the full lifecycle management of your serverless data pipeline.

@@ -1,48 +1,73 @@
 # The single source of truth for all services and resources in the system.
-# Used by the 'provision.go' script to manage cloud infrastructure.
+# This version uses snake_case to match the Go struct tags in types.go.
 
-defaultProjectID: "gemini-power-test" # CHANGE THIS
-defaultLocation: "EU"
+default_project_id: "gemini-power-test"
+default_location: "EU" # For multi-region resources like GCS/BigQuery
+default_region: "europe-west1" # Specific region for Cloud Run services
 
 environments:
   test:
-    projectID: "gemini-power-test" # CHANGE THIS
+    project_id: "gemini-power-test"
+    default_region: "europe-west1" # Can override the top-level default
+  production:
+    project_id: "your-prod-gcp-project-id" # CHANGE THIS
+    default_region: "us-central1"
 
 services:
   - name: "ingestion-service"
     description: "Receives data from MQTT and publishes to Pub/Sub."
+    service_account: "ingestion-sa@your-gcp-project.iam.gserviceaccount.com"
+    source_path: "ingestion" # Path from project root
+    health_check:
+      port: 8080
+      path: "/healthz"
+    metadata:
+      # Service-specific configuration that will become environment variables
+      broker_url: "tcp://broker.emqx.io:1883"
+      topic: "garden_monitor"
+      client_id_prefix: "garden_broker"
+
   - name: "analysis-service"
     description: "Consumes from Pub/Sub and inserts into BigQuery."
+    service_account: "analysis-sa@your-gcp-project.iam.gserviceaccount.com"
+    source_path: "bigquery" # Path from project root
+    health_check:
+      port: 8080
+      path: "/healthz"
 
 dataflows:
   - name: "test-mqtt-to-bigquery"
+    description: "Dataflow for the test environment."
+    services:
+      - "ingestion-service"
+      - "analysis-service"
+    lifecycle:
+      strategy: "permanent"
+
+  - name: "prod-mqtt-to-bigquery"
     description: "The main production dataflow pipeline."
     services:
       - "ingestion-service"
       - "analysis-service"
-    # No 'lifecycle' section means resources are permanent by default.
 
 resources:
-  pubSubTopics:
+  # --- Test Resources ---
+  pubsub_topics:
     - name: "test-device-data"
-      producerService: "ingestion-service"
-
-  pubSubSubscriptions:
+      producer_service: "ingestion-service"
+  pubsub_subscriptions:
     - name: "test-analysis-service-sub"
       topic: "test-device-data"
-      consumerService: "analysis-service"
-      # You can add more settings like ackDeadlineSeconds if needed.
-
-  bigQueryDatasets:
+      consumer_service: "analysis-service"
+  bigquery_datasets:
     - name: "test_device_analytics"
-      description: "Dataset for storing processed device telemetry."
-      # Expiration is not set, so it's permanent.
-
-  bigQueryTables:
+      description: "Dataset for storing test telemetry."
+  bigquery_tables:
     - name: "test_monitor_payloads"
       dataset: "test_device_analytics"
-      accessingServices:
-        - "analysis-service"
-      description: "Stores garden monitor telemetry payloads."
-      schemaSourceType: "go_struct"
-      schemaSourceIdentifier: "github.com/illmade-knight/ai-power-mpv/pkg/types.GardenMonitorPayload"
+      accessing_services: ["analysis-service"]
+      schema_source_type: "go_struct"
+      schema_source_identifier: "github.com/illmade-knight/ai-power-mpv/pkg/types.GardenMonitorPayload"
+
+  # gcs_buckets: [] # GCS section is optional
+
