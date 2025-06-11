@@ -249,7 +249,7 @@ func TestProcessingService_Integration_FullFlow(t *testing.T) {
 		return upstreamMsg.Payload, nil
 	}
 
-	// --- Initialize Generic Pipeline Components ---
+	// --- Initialize Generic BatchProcessing Components ---
 	consumer, err := bqstore.NewGooglePubSubConsumer(ctx, consumerCfg, logger)
 	require.NoError(t, err)
 
@@ -263,7 +263,7 @@ func TestProcessingService_Integration_FullFlow(t *testing.T) {
 
 	batchInserter := bqstore.NewBatchInserter[GardenMonitorPayload](batcherCfg, bigQueryInserter, logger)
 
-	processingService, err := bqstore.NewProcessingService[GardenMonitorPayload](serviceCfg, consumer, batchInserter, gardenPayloadDecoder, logger)
+	processingService, err := bqstore.NewBatchingService[GardenMonitorPayload](serviceCfg, consumer, batchInserter, gardenPayloadDecoder, logger)
 	require.NoError(t, err)
 
 	// --- Test Execution ---

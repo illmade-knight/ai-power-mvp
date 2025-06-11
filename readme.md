@@ -1,6 +1,7 @@
 ## Let's think big
 
-This follows on from our [AI TDD experiment](https://github.com/illmade-knight/ai-tdd)
+This follows on from our [AI TDD experiment](https://github.com/illmade-knight/ai-tdd).
+
 In our examples, no doubt for simplicity, the projects start small and expand outwards.
 That's good for the TDD cycle I guess.
 
@@ -10,7 +11,7 @@ Of course that's not how you think of a product
 Instead let's define an overall 'vision' and start to break it down into parts.
 Then maybe we get back to TDD but with it being led by the overall 'vision'
 
-The current state is evolving - at present we have 3 microservices 
+The current state is evolving - to start we have 3 microservices 
 1) ingestion from devices
 2) storage of raw device messages in slow recall format for audit
 3) storage of decoded device messages in google's BigQuery for analysis

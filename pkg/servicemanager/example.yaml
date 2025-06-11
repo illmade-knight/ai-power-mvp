@@ -1,0 +1,43 @@
+# config.yaml
+
+default_project_id: "your-gcp-project"
+environments:
+# ... your environments
+
+# NEW: Explicitly define your services and their GCP service accounts.
+# This is crucial for IAM management.
+services:
+  - name: "ingestion-service"
+    service_account: "ingestion-sa@your-gcp-project.iam.gserviceaccount.com"
+  - name: "analysis-service"
+    service_account: "analysis-sa@your-gcp-project.iam.gserviceaccount.com"
+  - name: "reporting-service"
+    service_account: "reporting-sa@your-gcp-project.iam.gserviceaccount.com"
+
+# NEW: Define your dataflows as collections of services.
+dataflows:
+  - name: "mqtt-to-bigquery"
+    description: "Full pipeline for ingesting MQTT device data and storing it in BigQuery for analysis."
+    services:
+      - "ingestion-service"
+      - "analysis-service"
+
+resources:
+  pubsub_topics:
+    - name: "processed-device-data"
+      # Link this resource to the service that produces data for it.
+      producer_service: "ingestion-service"
+
+  pubsub_subscriptions:
+    - name: "analysis-service-subscription"
+      topic: "processed-device-data"
+      # Link this resource to the service that consumes from it.
+      consumer_service: "analysis-service"
+
+  bigquery_tables:
+    - name: "monitor_payloads"
+      dataset: "device_data_analytics"
+      # List all services that need access to this table.
+      accessing_services:
+        - "analysis-service" # This service writes to the table.
+        - "reporting-service" # Another service might read from it for reports.

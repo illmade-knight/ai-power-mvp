@@ -1,0 +1,48 @@
+# The single source of truth for all services and resources in the system.
+# Used by the 'provision.go' script to manage cloud infrastructure.
+
+defaultProjectID: "gemini-power-test" # CHANGE THIS
+defaultLocation: "EU"
+
+environments:
+  test:
+    projectID: "gemini-power-test" # CHANGE THIS
+
+services:
+  - name: "ingestion-service"
+    description: "Receives data from MQTT and publishes to Pub/Sub."
+  - name: "analysis-service"
+    description: "Consumes from Pub/Sub and inserts into BigQuery."
+
+dataflows:
+  - name: "test-mqtt-to-bigquery"
+    description: "The main production dataflow pipeline."
+    services:
+      - "ingestion-service"
+      - "analysis-service"
+    # No 'lifecycle' section means resources are permanent by default.
+
+resources:
+  pubSubTopics:
+    - name: "test-device-data"
+      producerService: "ingestion-service"
+
+  pubSubSubscriptions:
+    - name: "test-analysis-service-sub"
+      topic: "test-device-data"
+      consumerService: "analysis-service"
+      # You can add more settings like ackDeadlineSeconds if needed.
+
+  bigQueryDatasets:
+    - name: "test_device_analytics"
+      description: "Dataset for storing processed device telemetry."
+      # Expiration is not set, so it's permanent.
+
+  bigQueryTables:
+    - name: "test_monitor_payloads"
+      dataset: "test_device_analytics"
+      accessingServices:
+        - "analysis-service"
+      description: "Stores garden monitor telemetry payloads."
+      schemaSourceType: "go_struct"
+      schemaSourceIdentifier: "github.com/illmade-knight/ai-power-mpv/pkg/types.GardenMonitorPayload"

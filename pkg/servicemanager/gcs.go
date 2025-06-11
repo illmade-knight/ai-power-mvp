@@ -263,8 +263,8 @@ func (sm *StorageManager) Teardown(ctx context.Context, cfg *TopLevelConfig, env
 	return nil
 }
 
-// CreateRealGCSClient creates a real GCS client for use when not testing with mocks.
-func CreateRealGCSClient(ctx context.Context, clientOpts ...option.ClientOption) (GCSClient, error) {
+// CreateGoogleGCSClient creates a real GCS client for use when not testing with mocks.
+func CreateGoogleGCSClient(ctx context.Context, clientOpts ...option.ClientOption) (GCSClient, error) {
 	realClient, err := storage.NewClient(ctx, clientOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("storage.NewClient: %w", err)

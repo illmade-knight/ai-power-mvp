@@ -30,10 +30,17 @@ func DefaultIngestionServiceConfig() IngestionServiceConfig {
 	}
 }
 
+// Err returns a read-only channel of processing errors. The owner of this
+// service can listen to this channel to be notified of any non-fatal errors
+// that occur during message processing.
+func (s *IngestionService) Err() <-chan error {
+	return s.ErrorChan
+}
+
 // IngestionService processes raw messages from MQTT, optionally enriches them with
 // attributes, and forwards the raw payload to a publisher.
 type IngestionService struct {
-	mqttClientConfig *MQTTClientConfig
+	mqttClientConfig MQTTClientConfig
 	pahoClient       mqtt.Client
 	publisher        MessagePublisher
 	extractor        AttributeExtractor // Can be nil for pure bridge behavior
@@ -60,8 +67,9 @@ func NewIngestionService(
 	extractor AttributeExtractor,
 	logger zerolog.Logger,
 	serviceCfg IngestionServiceConfig,
-	mqttCfg *MQTTClientConfig,
+	mqttCfg MQTTClientConfig,
 ) *IngestionService {
+
 	// **FIX STARTS HERE**
 	// If the provided config has zero values for key parameters, apply defaults
 	// to ensure the service can function correctly.
@@ -203,9 +211,19 @@ func (s *IngestionService) Start() error {
 		}(i)
 	}
 
-	if s.mqttClientConfig == nil {
-		s.logger.Info().Msg("IngestionService started without MQTT client.")
+	// If the MQTT broker URL is not set, we assume MQTT is disabled for this service.
+	if s.mqttClientConfig.BrokerURL == "" {
+		s.logger.Info().Msg("IngestionService started without MQTT client (broker URL is empty).")
 		return nil
+	}
+	// If the MQTT broker URL is not set, we assume MQTT is disabled for this service.
+	if s.mqttClientConfig.KeepAlive == 0 {
+		s.mqttClientConfig.KeepAlive = 10 * time.Second
+		s.logger.Warn().Msg("mqtt config had a zero KeepAlive value - setting to 10 * time.Second")
+	}
+	if s.mqttClientConfig.ConnectTimeout == 0 {
+		s.mqttClientConfig.ConnectTimeout = 5 * time.Second
+		s.logger.Warn().Msg("mqtt config had a zero ConnectTimeout value - setting to 5 * time.Second")
 	}
 	if err := s.initAndConnectMQTTClient(); err != nil {
 		s.logger.Error().Err(err).Msg("Failed to initialize or connect MQTT client during Start.")
@@ -225,13 +243,12 @@ func (s *IngestionService) Stop() {
 	s.logger.Info().Msg("Step 1: Shutdown signaled. No new messages will be queued by the handler.")
 
 	if s.pahoClient != nil && s.pahoClient.IsConnected() {
-		if s.mqttClientConfig != nil {
-			topic := s.mqttClientConfig.Topic
-			s.logger.Info().Str("topic", topic).Msg("Step 2a: Unsubscribing from MQTT topic.")
-			if token := s.pahoClient.Unsubscribe(topic); token.WaitTimeout(2*time.Second) && token.Error() != nil {
-				s.logger.Warn().Err(token.Error()).Msg("Failed to unsubscribe during shutdown.")
-			}
+		topic := s.mqttClientConfig.Topic
+		s.logger.Info().Str("topic", topic).Msg("Step 2a: Unsubscribing from MQTT topic.")
+		if token := s.pahoClient.Unsubscribe(topic); token.WaitTimeout(2*time.Second) && token.Error() != nil {
+			s.logger.Warn().Err(token.Error()).Msg("Failed to unsubscribe during shutdown.")
 		}
+
 		// Disconnect and give paho time to quiesce
 		s.pahoClient.Disconnect(500)
 		s.logger.Info().Msg("Step 2b: Paho MQTT client disconnected.")
@@ -336,7 +353,7 @@ func (s *IngestionService) initAndConnectMQTTClient() error {
 
 	if strings.HasPrefix(strings.ToLower(s.mqttClientConfig.BrokerURL), "tls://") ||
 		strings.HasPrefix(strings.ToLower(s.mqttClientConfig.BrokerURL), "ssl://") {
-		tlsConfig, err := newTLSConfig(s.mqttClientConfig, s.logger)
+		tlsConfig, err := newTLSConfig(&s.mqttClientConfig, s.logger)
 		if err != nil {
 			return fmt.Errorf("failed to create TLS config: %w", err)
 		}

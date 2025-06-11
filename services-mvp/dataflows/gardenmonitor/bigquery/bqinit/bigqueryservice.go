@@ -9,7 +9,7 @@ import (
 
 	"github.com/rs/zerolog"
 
-	// Import the generic pipeline library
+	// Import the generic batchProcessing library
 	"github.com/illmade-knight/ai-power-mpv/pkg/bqstore"
 )
 
@@ -17,18 +17,18 @@ import (
 
 // Server holds all the components of our microservice.
 type Server struct {
-	logger     zerolog.Logger
-	config     *Config
-	pipeline   *bqstore.ProcessingService[types.GardenMonitorPayload]
-	httpServer *http.Server
+	logger          zerolog.Logger
+	config          *Config
+	batchProcessing *bqstore.ProcessingService[types.GardenMonitorPayload]
+	httpServer      *http.Server
 }
 
 // NewServer creates and configures a new Server instance.
-func NewServer(cfg *Config, pipeline *bqstore.ProcessingService[types.GardenMonitorPayload], logger zerolog.Logger) *Server {
+func NewServer(cfg *Config, b *bqstore.ProcessingService[types.GardenMonitorPayload], logger zerolog.Logger) *Server {
 	return &Server{
-		logger:   logger,
-		config:   cfg,
-		pipeline: pipeline,
+		logger:          logger,
+		config:          cfg,
+		batchProcessing: b,
 	}
 }
 
@@ -36,11 +36,11 @@ func NewServer(cfg *Config, pipeline *bqstore.ProcessingService[types.GardenMoni
 func (s *Server) Start() error {
 	s.logger.Info().Msg("Starting server...")
 
-	// Start the data processing pipeline.
-	if err := s.pipeline.Start(); err != nil {
-		return fmt.Errorf("failed to start pipeline: %w", err)
+	// Start the data processing batchProcessing.
+	if err := s.batchProcessing.Start(); err != nil {
+		return fmt.Errorf("failed to start batchProcessing: %w", err)
 	}
-	s.logger.Info().Msg("Data pipeline started.")
+	s.logger.Info().Msg("Data batchProcessing started.")
 
 	// Set up and start the HTTP server for health checks.
 	mux := http.NewServeMux()
@@ -62,9 +62,9 @@ func (s *Server) Start() error {
 func (s *Server) Shutdown() {
 	s.logger.Info().Msg("Shutting down server...")
 
-	// 1. Stop the data pipeline first to ensure all messages are flushed.
-	s.pipeline.Stop()
-	s.logger.Info().Msg("Data pipeline stopped.")
+	// 1. Stop the data batchProcessing first to ensure all messages are flushed.
+	s.batchProcessing.Stop()
+	s.logger.Info().Msg("Data batchProcessing stopped.")
 
 	// 2. Shut down the HTTP server.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

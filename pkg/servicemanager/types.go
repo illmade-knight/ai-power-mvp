@@ -1,5 +1,53 @@
 package servicemanager
 
+// LifecycleStrategy defines how the ServiceManager should treat a dataflow's resources.
+type LifecycleStrategy string
+
+const (
+	// LifecycleStrategyPermanent indicates that resources are long-lived and should be protected from accidental deletion.
+	LifecycleStrategyPermanent LifecycleStrategy = "permanent"
+	// LifecycleStrategyEphemeral indicates that resources are temporary and should be torn down after use (e.g., after a test).
+	LifecycleStrategyEphemeral LifecycleStrategy = "ephemeral"
+)
+
+// LifecyclePolicy defines the lifecycle management rules for a dataflow.
+type LifecyclePolicy struct {
+	// Strategy determines whether the dataflow's resources are permanent or temporary.
+	Strategy LifecycleStrategy `yaml:"strategy"`
+
+	// KeepDatasetOnTest, if true, prevents the BigQuery dataset associated with an
+	// ephemeral dataflow from being deleted during teardown. Useful for debugging test results.
+	KeepDatasetOnTest bool `yaml:"keep_dataset_on_test,omitempty"` // NEW
+
+	// AutoTeardownAfter is a string representation of a duration (e.g., "2h", "30m").
+	// This could be used by a separate cleanup process to find and remove stale test environments.
+	AutoTeardownAfter string `yaml:"auto_teardown_after,omitempty"`
+}
+
+// ServiceSpec defines a microservice's identity within the system.
+type ServiceSpec struct {
+	Name           string `yaml:"name"`
+	ServiceAccount string `yaml:"service_account"`
+}
+
+// DataflowSpec defines a logical grouping of services that work together.
+type DataflowSpec struct {
+	Name        string           `yaml:"name"`
+	Description string           `yaml:"description,omitempty"`
+	Services    []string         `yaml:"services"`
+	Lifecycle   *LifecyclePolicy `yaml:"lifecycle,omitempty"` // Use a pointer to make it optional
+}
+
+// TopLevelConfig is the root of the configuration structure.
+type TopLevelConfig struct {
+	DefaultProjectID string                     `yaml:"default_project_id"`
+	DefaultLocation  string                     `yaml:"default_location"`
+	Environments     map[string]EnvironmentSpec `yaml:"environments"`
+	Services         []ServiceSpec              `yaml:"services"`
+	Dataflows        []DataflowSpec             `yaml:"dataflows"`
+	Resources        ResourcesSpec              `yaml:"resources"`
+}
+
 // TopLevelConfig, EnvironmentSpec, ResourcesSpec remain the same
 
 // PubSubTopic defines the configuration for a Pub/Sub topic.
@@ -68,15 +116,6 @@ type LifecycleActionSpec struct {
 }
 type LifecycleConditionSpec struct {
 	AgeDays int `yaml:"age_days,omitempty"`
-}
-
-// Ensure TopLevelConfig, EnvironmentSpec, ResourcesSpec are also present
-// (assuming they are in the same file or package from previous context)
-type TopLevelConfig struct {
-	DefaultProjectID string                     `yaml:"default_project_id"`
-	DefaultLocation  string                     `yaml:"default_location"`
-	Environments     map[string]EnvironmentSpec `yaml:"environments"`
-	Resources        ResourcesSpec              `yaml:"resources"`
 }
 
 type EnvironmentSpec struct {

@@ -33,12 +33,12 @@ type Config struct {
 		CredentialsFile string `mapstructure:"credentials_file"`
 	} `mapstructure:"bigquery"`
 
-	// Pipeline holds settings for the processing and batching logic.
-	Pipeline struct {
+	// BatchProcessing holds settings for the processing and batchProcessing logic.
+	BatchProcessing struct {
 		NumWorkers   int           `mapstructure:"num_workers"`
 		BatchSize    int           `mapstructure:"batch_size"`
 		FlushTimeout time.Duration `mapstructure:"flush_timeout"`
-	} `mapstructure:"pipeline"`
+	} `mapstructure:"batchProcessing"`
 }
 
 // LoadConfig initializes and loads the application configuration.
@@ -49,9 +49,9 @@ func LoadConfig() (*Config, error) {
 	// --- 1. Set Defaults ---
 	v.SetDefault("log_level", "info")
 	v.SetDefault("http_port", ":8080")
-	v.SetDefault("pipeline.num_workers", 5)
-	v.SetDefault("pipeline.batch_size", 100)
-	v.SetDefault("pipeline.flush_timeout", 5*time.Second)
+	v.SetDefault("batchProcessing.num_workers", 5)
+	v.SetDefault("batchProcessing.batch_size", 100)
+	v.SetDefault("batchProcessing.flush_timeout", 5*time.Second)
 
 	// --- 2. Set up pflag for command-line overrides ---
 	pflag.String("config", "config.yaml", "Path to config file")

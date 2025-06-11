@@ -1,52 +1,53 @@
 package servicemanager
 
 import (
-	"context"
-	"fmt"
-	"strings"
-	"time"
+"context"
+"fmt"
+"strings"
+"time"
 
 	"cloud.google.com/go/pubsub"
 	"github.com/rs/zerolog"
+	"google.golang.org/api/option"
 )
 
 // --- PubSub Manager ---
 
 // PubSubManager handles the creation and deletion of Pub/Sub topics and subscriptions.
 type PubSubManager struct {
-	client PSClient // Use the interface for testability
-	logger zerolog.Logger
+client PSClient // Use the interface for testability
+logger zerolog.Logger
 }
 
 // NewPubSubManager creates a new PubSubManager.
 func NewPubSubManager(client PSClient, logger zerolog.Logger) (*PubSubManager, error) {
-	if client == nil {
-		return nil, fmt.Errorf("PubSub client (PSClient interface) cannot be nil")
-	}
-	return &PubSubManager{
-		client: client,
-		logger: logger.With().Str("component", "PubSubManager").Logger(),
-	}, nil
+if client == nil {
+return nil, fmt.Errorf("PubSub client (PSClient interface) cannot be nil")
+}
+return &PubSubManager{
+client: client,
+logger: logger.With().Str("component", "PubSubManager").Logger(),
+}, nil
 }
 
 // GetTargetProjectID determines the project ID to use based on the environment.
 func GetTargetProjectID(cfg *TopLevelConfig, environment string) (string, error) {
-	if envSpec, ok := cfg.Environments[environment]; ok && envSpec.ProjectID != "" {
-		return envSpec.ProjectID, nil
-	}
-	if cfg.DefaultProjectID != "" {
-		return cfg.DefaultProjectID, nil
-	}
-	return "", fmt.Errorf("project ID not found for environment '%s' and no default_project_id set", environment)
+if envSpec, ok := cfg.Environments[environment]; ok && envSpec.ProjectID != "" {
+return envSpec.ProjectID, nil
+}
+if cfg.DefaultProjectID != "" {
+return cfg.DefaultProjectID, nil
+}
+return "", fmt.Errorf("project ID not found for environment '%s' and no default_project_id set", environment)
 }
 
 // Setup creates all configured Pub/Sub topics and subscriptions for a given environment.
 func (m *PubSubManager) Setup(ctx context.Context, cfg *TopLevelConfig, environment string) error {
-	projectID, err := GetTargetProjectID(cfg, environment)
-	if err != nil {
-		return err
-	}
-	m.logger.Info().Str("project_id", projectID).Str("environment", environment).Msg("Starting Pub/Sub setup")
+projectID, err := GetTargetProjectID(cfg, environment)
+if err != nil {
+return err
+}
+m.logger.Info().Str("project_id", projectID).Str("environment", environment).Msg("Starting Pub/Sub setup")
 
 	if err := m.setupTopics(ctx, cfg.Resources.PubSubTopics); err != nil {
 		return err
@@ -62,40 +63,40 @@ func (m *PubSubManager) Setup(ctx context.Context, cfg *TopLevelConfig, environm
 }
 
 func (m *PubSubManager) setupTopics(ctx context.Context, topicsToCreate []PubSubTopic) error {
-	m.logger.Info().Int("count", len(topicsToCreate)).Msg("Setting up Pub/Sub topics...")
-	for _, topicSpec := range topicsToCreate {
-		if topicSpec.Name == "" {
-			m.logger.Error().Msg("Skipping topic with empty name")
-			continue
-		}
-		topic := m.client.Topic(topicSpec.Name)
-		exists, err := topic.Exists(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to check existence of topic '%s': %w", topicSpec.Name, err)
-		}
-		if exists {
-			m.logger.Info().Str("topic_id", topicSpec.Name).Msg("Topic already exists, ensuring configuration (labels, etc.)")
-			if len(topicSpec.Labels) > 0 {
-				_, updateErr := topic.Update(ctx, pubsub.TopicConfigToUpdate{
-					Labels: topicSpec.Labels,
-				})
-				if updateErr != nil {
-					m.logger.Warn().Err(updateErr).Str("topic_id", topicSpec.Name).Msg("Failed to update topic labels")
-				} else {
-					m.logger.Info().Str("topic_id", topicSpec.Name).Msg("Topic labels updated/ensured.")
-				}
-			}
-		} else {
-			m.logger.Info().Str("topic_id", topicSpec.Name).Msg("Creating topic...")
-			var createdTopic PSTopic
-			var createErr error
-			if len(topicSpec.Labels) > 0 {
-				createdTopic, createErr = m.client.CreateTopicWithConfig(ctx, topicSpec.Name, &pubsub.TopicConfig{
-					Labels: topicSpec.Labels,
-				})
-			} else {
-				createdTopic, createErr = m.client.CreateTopic(ctx, topicSpec.Name)
-			}
+m.logger.Info().Int("count", len(topicsToCreate)).Msg("Setting up Pub/Sub topics...")
+for _, topicSpec := range topicsToCreate {
+if topicSpec.Name == "" {
+m.logger.Error().Msg("Skipping topic with empty name")
+continue
+}
+topic := m.client.Topic(topicSpec.Name)
+exists, err := topic.Exists(ctx)
+if err != nil {
+return fmt.Errorf("failed to check existence of topic '%s': %w", topicSpec.Name, err)
+}
+if exists {
+m.logger.Info().Str("topic_id", topicSpec.Name).Msg("Topic already exists, ensuring configuration (labels, etc.)")
+if len(topicSpec.Labels) > 0 {
+_, updateErr := topic.Update(ctx, pubsub.TopicConfigToUpdate{
+Labels: topicSpec.Labels,
+})
+if updateErr != nil {
+m.logger.Warn().Err(updateErr).Str("topic_id", topicSpec.Name).Msg("Failed to update topic labels")
+} else {
+m.logger.Info().Str("topic_id", topicSpec.Name).Msg("Topic labels updated/ensured.")
+}
+}
+} else {
+m.logger.Info().Str("topic_id", topicSpec.Name).Msg("Creating topic...")
+var createdTopic PSTopic
+var createErr error
+if len(topicSpec.Labels) > 0 {
+createdTopic, createErr = m.client.CreateTopicWithConfig(ctx, topicSpec.Name, &pubsub.TopicConfig{
+Labels: topicSpec.Labels,
+})
+} else {
+createdTopic, createErr = m.client.CreateTopic(ctx, topicSpec.Name)
+}
 
 			if createErr != nil {
 				return fmt.Errorf("failed to create topic '%s': %w", topicSpec.Name, createErr)
@@ -108,14 +109,14 @@ func (m *PubSubManager) setupTopics(ctx context.Context, topicsToCreate []PubSub
 
 // buildGcpSubscriptionConfig now accepts a projectID to create the temporary client.
 func (m *PubSubManager) buildGcpSubscriptionConfig(ctx context.Context, subSpec PubSubSubscription, projectID string) (*pubsub.SubscriptionConfig, error) {
-	// The Google client library requires a concrete *pubsub.Topic.
-	// We use the projectID to create this temporary client correctly.
-	topicClient, err := pubsub.NewClient(ctx, projectID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create temporary client for topic wrapping: %w", err)
-	}
-	defer topicClient.Close()
-	topicForConfig := topicClient.Topic(subSpec.Topic)
+// The Google client library requires a concrete *pubsub.Topic.
+// We use the projectID to create this temporary client correctly.
+topicClient, err := pubsub.NewClient(ctx, projectID)
+if err != nil {
+return nil, fmt.Errorf("failed to create temporary client for topic wrapping: %w", err)
+}
+defer topicClient.Close()
+topicForConfig := topicClient.Topic(subSpec.Topic)
 
 	gcpConfig := &pubsub.SubscriptionConfig{
 		Topic:  topicForConfig,
@@ -149,12 +150,12 @@ func (m *PubSubManager) buildGcpSubscriptionConfig(ctx context.Context, subSpec 
 
 // setupSubscriptions now accepts a projectID to pass to its helper.
 func (m *PubSubManager) setupSubscriptions(ctx context.Context, subsToCreate []PubSubSubscription, projectID string) error {
-	m.logger.Info().Int("count", len(subsToCreate)).Msg("Setting up Pub/Sub subscriptions...")
-	for _, subSpec := range subsToCreate {
-		if subSpec.Name == "" || subSpec.Topic == "" {
-			m.logger.Error().Str("sub_name", subSpec.Name).Str("topic_name", subSpec.Topic).Msg("Skipping subscription with empty name or topic")
-			continue
-		}
+m.logger.Info().Int("count", len(subsToCreate)).Msg("Setting up Pub/Sub subscriptions...")
+for _, subSpec := range subsToCreate {
+if subSpec.Name == "" || subSpec.Topic == "" {
+m.logger.Error().Str("sub_name", subSpec.Name).Str("topic_name", subSpec.Topic).Msg("Skipping subscription with empty name or topic")
+continue
+}
 
 		topic := m.client.Topic(subSpec.Topic)
 		topicExists, err := topic.Exists(ctx)
@@ -206,11 +207,11 @@ func (m *PubSubManager) setupSubscriptions(ctx context.Context, subsToCreate []P
 
 // Teardown deletes all configured Pub/Sub resources for a given environment.
 func (m *PubSubManager) Teardown(ctx context.Context, cfg *TopLevelConfig, environment string) error {
-	projectID, err := GetTargetProjectID(cfg, environment)
-	if err != nil {
-		return err
-	}
-	m.logger.Info().Str("project_id", projectID).Str("environment", environment).Msg("Starting Pub/Sub teardown")
+projectID, err := GetTargetProjectID(cfg, environment)
+if err != nil {
+return err
+}
+m.logger.Info().Str("project_id", projectID).Str("environment", environment).Msg("Starting Pub/Sub teardown")
 
 	if envSpec, ok := cfg.Environments[environment]; ok && envSpec.TeardownProtection {
 		return fmt.Errorf("teardown protection enabled for environment: %s", environment)
@@ -228,47 +229,52 @@ func (m *PubSubManager) Teardown(ctx context.Context, cfg *TopLevelConfig, envir
 }
 
 func (m *PubSubManager) teardownSubscriptions(ctx context.Context, subsToTeardown []PubSubSubscription) error {
-	m.logger.Info().Int("count", len(subsToTeardown)).Msg("Tearing down Pub/Sub subscriptions...")
-	for i := len(subsToTeardown) - 1; i >= 0; i-- {
-		subSpec := subsToTeardown[i]
-		if subSpec.Name == "" {
-			continue
-		}
-		sub := m.client.Subscription(subSpec.Name)
-		m.logger.Info().Str("subscription_id", subSpec.Name).Msg("Attempting to delete subscription...")
-		if err := sub.Delete(ctx); err != nil {
-			if strings.Contains(err.Error(), "NotFound") {
-				m.logger.Info().Str("subscription_id", subSpec.Name).Msg("Subscription not found, skipping.")
-			} else {
-				m.logger.Error().Err(err).Str("subscription_id", subSpec.Name).Msg("Failed to delete subscription")
-			}
-		} else {
-			m.logger.Info().Str("subscription_id", subSpec.Name).Msg("Subscription deleted successfully")
-		}
-	}
-	return nil
+m.logger.Info().Int("count", len(subsToTeardown)).Msg("Tearing down Pub/Sub subscriptions...")
+for i := len(subsToTeardown) - 1; i >= 0; i-- {
+subSpec := subsToTeardown[i]
+if subSpec.Name == "" { continue }
+sub := m.client.Subscription(subSpec.Name)
+m.logger.Info().Str("subscription_id", subSpec.Name).Msg("Attempting to delete subscription...")
+if err := sub.Delete(ctx); err != nil {
+if strings.Contains(err.Error(), "NotFound") {
+m.logger.Info().Str("subscription_id", subSpec.Name).Msg("Subscription not found, skipping.")
+} else {
+m.logger.Error().Err(err).Str("subscription_id", subSpec.Name).Msg("Failed to delete subscription")
+}
+} else {
+m.logger.Info().Str("subscription_id", subSpec.Name).Msg("Subscription deleted successfully")
+}
+}
+return nil
 }
 
 func (m *PubSubManager) teardownTopics(ctx context.Context, topicsToTeardown []PubSubTopic) error {
-	m.logger.Info().Int("count", len(topicsToTeardown)).Msg("Tearing down Pub/Sub topics...")
-	for i := len(topicsToTeardown) - 1; i >= 0; i-- {
-		topicSpec := topicsToTeardown[i]
-		if topicSpec.Name == "" {
-			continue
-		}
-		topic := m.client.Topic(topicSpec.Name)
-		m.logger.Info().Str("topic_id", topicSpec.Name).Msg("Attempting to delete topic...")
-		if err := topic.Delete(ctx); err != nil {
-			if strings.Contains(err.Error(), "NotFound") {
-				m.logger.Info().Str("topic_id", topicSpec.Name).Msg("Topic not found, skipping.")
-			} else if strings.Contains(err.Error(), "still has subscriptions") {
-				m.logger.Error().Err(err).Str("topic_id", topicSpec.Name).Msg("Topic has active subscriptions and cannot be deleted.")
-			} else {
-				m.logger.Error().Err(err).Str("topic_id", topicSpec.Name).Msg("Failed to delete topic")
-			}
-		} else {
-			m.logger.Info().Str("topic_id", topicSpec.Name).Msg("Topic deleted successfully")
-		}
-	}
-	return nil
+m.logger.Info().Int("count", len(topicsToTeardown)).Msg("Tearing down Pub/Sub topics...")
+for i := len(topicsToTeardown) - 1; i >= 0; i-- {
+topicSpec := topicsToTeardown[i]
+if topicSpec.Name == "" { continue }
+topic := m.client.Topic(topicSpec.Name)
+m.logger.Info().Str("topic_id", topicSpec.Name).Msg("Attempting to delete topic...")
+if err := topic.Delete(ctx); err != nil {
+if strings.Contains(err.Error(), "NotFound") {
+m.logger.Info().Str("topic_id", topicSpec.Name).Msg("Topic not found, skipping.")
+} else if strings.Contains(err.Error(), "still has subscriptions") {
+m.logger.Error().Err(err).Str("topic_id", topicSpec.Name).Msg("Topic has active subscriptions and cannot be deleted.")
+} else {
+m.logger.Error().Err(err).Str("topic_id", topicSpec.Name).Msg("Failed to delete topic")
+}
+} else {
+m.logger.Info().Str("topic_id", topicSpec.Name).Msg("Topic deleted successfully")
+}
+}
+return nil
+}
+
+// CreateRealPubSubClient creates a real Pub/Sub client for use in production.
+func CreateRealPubSubClient(ctx context.Context, projectID string, clientOpts ...option.ClientOption) (PSClient, error) {
+realClient, err := pubsub.NewClient(ctx, projectID, clientOpts...)
+if err != nil {
+return nil, fmt.Errorf("pubsub.NewClient: %w", err)
+}
+return NewPubSubClientAdapter(realClient), nil
 }

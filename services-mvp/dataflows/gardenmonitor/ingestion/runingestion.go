@@ -30,7 +30,7 @@ func main() {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: zerolog.TimeFieldFormat})
 	log.Info().Msg("Logger configured.")
 
-	// --- 3. Build Pipeline Components ---
+	// --- 3. Build Service Components ---
 	ctx := context.Background()
 
 	// Create the Google Pub/Sub publisher.
@@ -44,17 +44,16 @@ func main() {
 		log.Fatal().Err(err).Msg("Failed to create Google Pub/Sub publisher")
 	}
 
-	// In this simple bridge, we don't have a special attribute extractor.
-	// The service will just forward the raw payload.
+	// For a production bridge, we don't need a special attribute extractor.
 	var extractor mqttconverter.AttributeExtractor = nil
 
-	// Create the ingestion service.
+	// Create the ingestion service, passing the MQTT config by value.
 	ingestionService := mqttconverter.NewIngestionService(
 		publisher,
 		extractor,
 		log.Logger,
 		cfg.Service,
-		&cfg.MQTT,
+		cfg.MQTT, // Pass by value to prevent pointer issues
 	)
 
 	// --- 4. Create and Run the Server ---

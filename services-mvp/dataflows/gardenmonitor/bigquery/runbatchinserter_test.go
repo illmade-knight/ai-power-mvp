@@ -87,7 +87,7 @@ func TestGardenMonitorService_FullFlow(t *testing.T) {
 			DatasetID: testBigQueryDatasetID,
 			TableID:   testBigQueryTableID,
 		},
-		Pipeline: struct {
+		BatchProcessing: struct {
 			NumWorkers   int           `mapstructure:"num_workers"`
 			BatchSize    int           `mapstructure:"batch_size"`
 			FlushTimeout time.Duration `mapstructure:"flush_timeout"`
@@ -120,12 +120,12 @@ func TestGardenMonitorService_FullFlow(t *testing.T) {
 	require.NoError(t, err)
 
 	batcher := bqstore.NewBatchInserter[types.GardenMonitorPayload](&bqstore.BatchInserterConfig{
-		BatchSize:    cfg.Pipeline.BatchSize,
-		FlushTimeout: cfg.Pipeline.FlushTimeout,
+		BatchSize:    cfg.BatchProcessing.BatchSize,
+		FlushTimeout: cfg.BatchProcessing.FlushTimeout,
 	}, inserter, testLogger)
 
-	pipeline, err := bqstore.NewProcessingService[types.GardenMonitorPayload](&bqstore.ServiceConfig{
-		NumProcessingWorkers: cfg.Pipeline.NumWorkers,
+	pipeline, err := bqstore.NewBatchingService[types.GardenMonitorPayload](&bqstore.ServiceConfig{
+		NumProcessingWorkers: cfg.BatchProcessing.NumWorkers,
 	}, consumer, batcher, types.GardenMonitorDecoder, testLogger)
 	require.NoError(t, err)
 

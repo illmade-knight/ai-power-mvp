@@ -12,7 +12,6 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
-	// Import the generic pipeline library
 	"github.com/illmade-knight/ai-power-mpv/pkg/bqstore"
 )
 
@@ -33,11 +32,9 @@ func main() {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: zerolog.TimeFieldFormat})
 	log.Info().Msg("Logger configured.")
 
-	// --- 3. Build Pipeline Components ---
+	// --- 3. Build BatchProcessing Components ---
 	ctx := context.Background()
 
-	// Create a BigQuery client (reused by the inserter).
-	// The bqstore library provides helpers, but you can also create clients manually.
 	bqClient, err := bqstore.NewProductionBigQueryClient(ctx, &bqstore.BigQueryInserterConfig{
 		ProjectID:       cfg.ProjectID,
 		CredentialsFile: cfg.BigQuery.CredentialsFile,
@@ -47,7 +44,6 @@ func main() {
 	}
 	defer bqClient.Close()
 
-	// Create the Pub/Sub consumer.
 	consumerCfg := &bqstore.GooglePubSubConsumerConfig{
 		ProjectID:       cfg.ProjectID,
 		SubscriptionID:  cfg.Consumer.SubscriptionID,
@@ -58,7 +54,6 @@ func main() {
 		log.Fatal().Err(err).Msg("Failed to create Pub/Sub consumer")
 	}
 
-	// Create the generic BigQuery inserter, specifying our concrete type.
 	bqInserterCfg := &bqstore.BigQueryInserterConfig{
 		ProjectID: cfg.ProjectID,
 		DatasetID: cfg.BigQuery.DatasetID,
@@ -66,29 +61,27 @@ func main() {
 	}
 	bigQueryInserter, err := bqstore.NewBigQueryInserter[types.GardenMonitorPayload](ctx, bqClient, bqInserterCfg, log.Logger)
 	if err != nil {
-		// Attempt to provide more specific error info if table creation fails.
 		if _, ok := err.(*bigquery.Error); ok {
 			log.Fatal().Err(err).Msg("A BigQuery API error occurred. Check permissions and if the dataset exists.")
 		}
 		log.Fatal().Err(err).Msg("Failed to create BigQuery inserter")
 	}
 
-	// Create the generic batch inserter.
 	batcherCfg := &bqstore.BatchInserterConfig{
-		BatchSize:    cfg.Pipeline.BatchSize,
-		FlushTimeout: cfg.Pipeline.FlushTimeout,
+		BatchSize:    cfg.BatchProcessing.BatchSize,
+		FlushTimeout: cfg.BatchProcessing.FlushTimeout,
 	}
 	batchInserter := bqstore.NewBatchInserter[types.GardenMonitorPayload](batcherCfg, bigQueryInserter, log.Logger)
 
-	// Create the generic processing service, providing our specific decoder.
 	serviceCfg := &bqstore.ServiceConfig{
-		NumProcessingWorkers: cfg.Pipeline.NumWorkers,
+		NumProcessingWorkers: cfg.BatchProcessing.NumWorkers,
 	}
-	processingService, err := bqstore.NewProcessingService[types.GardenMonitorPayload](
+	// Corrected function name from NewBatchingService to NewProcessingService
+	processingService, err := bqstore.NewBatchingService[types.GardenMonitorPayload](
 		serviceCfg,
 		consumer,
 		batchInserter,
-		types.GardenMonitorDecoder, // Our specific decoder function
+		types.GardenMonitorDecoder,
 		log.Logger,
 	)
 	if err != nil {
@@ -98,22 +91,17 @@ func main() {
 	// --- 4. Create and Run the Server ---
 	server := bqinit.NewServer(cfg, processingService, log.Logger)
 
-	// Set up graceful shutdown.
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
-	// Run the server in a separate goroutine.
 	go func() {
 		if err := server.Start(); err != nil {
 			log.Fatal().Err(err).Msg("Server failed to start")
 		}
 	}()
 
-	// Block until a shutdown signal is received.
 	<-stop
 	log.Warn().Msg("Shutdown signal received")
-
-	// Perform graceful shutdown.
 	server.Shutdown()
 	log.Info().Msg("Server shut down gracefully.")
 }

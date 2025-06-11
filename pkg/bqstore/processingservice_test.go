@@ -33,7 +33,7 @@ func TestProcessingService_ProcessesMessages(t *testing.T) {
 		return &p, err
 	}
 
-	service, err := bqstore.NewProcessingService[testPayload](serviceCfg, mockConsumer, batcher, testDecoder, logger)
+	service, err := bqstore.NewBatchingService[testPayload](serviceCfg, mockConsumer, batcher, testDecoder, logger)
 	require.NoError(t, err)
 
 	err = service.Start()
@@ -75,7 +75,7 @@ func TestProcessingService_HandlesDecoderError(t *testing.T) {
 		return nil, errors.New("bad data")
 	}
 
-	service, err := bqstore.NewProcessingService[testPayload](serviceCfg, mockConsumer, batcher, errorDecoder, logger)
+	service, err := bqstore.NewBatchingService[testPayload](serviceCfg, mockConsumer, batcher, errorDecoder, logger)
 	require.NoError(t, err)
 
 	err = service.Start()

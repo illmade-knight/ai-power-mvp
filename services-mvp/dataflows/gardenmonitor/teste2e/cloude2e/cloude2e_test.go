@@ -154,7 +154,7 @@ func TestE2E_Cloud_MqttToBigQueryFlow(t *testing.T) {
 			TableID         string `mapstructure:"table_id"`
 			CredentialsFile string `mapstructure:"credentials_file"`
 		}{DatasetID: datasetID, TableID: tableID},
-		Pipeline: struct {
+		BatchProcessing: struct {
 			NumWorkers   int           `mapstructure:"num_workers"`
 			BatchSize    int           `mapstructure:"batch_size"`
 			FlushTimeout time.Duration `mapstructure:"flush_timeout"`
@@ -183,12 +183,12 @@ func TestE2E_Cloud_MqttToBigQueryFlow(t *testing.T) {
 	require.NoError(t, err)
 
 	batcher := bqstore.NewBatchInserter[types.GardenMonitorPayload](&bqstore.BatchInserterConfig{
-		BatchSize:    bqCfg.Pipeline.BatchSize,
-		FlushTimeout: bqCfg.Pipeline.FlushTimeout,
+		BatchSize:    bqCfg.BatchProcessing.BatchSize,
+		FlushTimeout: bqCfg.BatchProcessing.FlushTimeout,
 	}, bqInserter, bqLogger)
 
-	processingService, err := bqstore.NewProcessingService[types.GardenMonitorPayload](&bqstore.ServiceConfig{
-		NumProcessingWorkers: bqCfg.Pipeline.NumWorkers,
+	processingService, err := bqstore.NewBatchingService[types.GardenMonitorPayload](&bqstore.ServiceConfig{
+		NumProcessingWorkers: bqCfg.BatchProcessing.NumWorkers,
 	}, bqConsumer, batcher, types.GardenMonitorDecoder, bqLogger)
 	require.NoError(t, err)
 

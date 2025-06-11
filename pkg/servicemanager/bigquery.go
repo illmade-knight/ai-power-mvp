@@ -6,6 +6,8 @@ import (
 	"fmt"
 	telemetry "github.com/illmade-knight/ai-power-mvp/gen/go/protos/telemetry"
 	"github.com/rs/zerolog"
+	"google.golang.org/api/option"
+
 	// "regexp" // No longer needed for toSnakeCase
 	"strings"
 )
@@ -99,6 +101,15 @@ func NewBigQueryManager(client BQClient, logger zerolog.Logger, knownSchemas map
 		logger:         logger.With().Str("component", "BigQueryManager").Logger(),
 		schemaRegistry: knownSchemas,
 	}, nil
+}
+
+// CreateGoogleBigQueryClient creates a real BigQuery client for use when not testing with mocks.
+func CreateGoogleBigQueryClient(ctx context.Context, projectID string, opts ...option.ClientOption) (BQClient, error) {
+	realClient, err := bigquery.NewClient(ctx, projectID, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("bigquery.NewClient: %w", err)
+	}
+	return NewBigQueryClientAdapter(realClient), nil
 }
 
 // GetTargetProjectID, TopLevelConfig, etc. are assumed to be defined elsewhere in the package.
