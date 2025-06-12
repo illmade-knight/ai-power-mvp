@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/illmade-knight/ai-power-mpv/pkg/mqttconverter"
 	"os"
 	"time"
 
@@ -26,7 +27,7 @@ func main() {
 	log.Info().Msg("Starting MQTT Sampler Tool...")
 
 	// 3. Load configuration from environment
-	mqttCfg, err := loadMQTTClientConfigFromFile(*configFile)
+	mqttCfg, err := mqttconverter.LoadMQTTClientConfigFromFile(*configFile)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to load MQTT configuration")
 	}
@@ -35,7 +36,7 @@ func main() {
 		Msg("Configuration loaded")
 
 	// 4. Create and run the sampler
-	sampler := NewSampler(mqttCfg, log.Logger, *numMessages)
+	sampler := mqttconverter.NewSampler(*mqttCfg, log.Logger, *numMessages)
 	if err := sampler.Run(context.Background()); err != nil {
 		log.Fatal().Err(err).Msg("Sampler execution failed")
 	}
@@ -56,7 +57,7 @@ func main() {
 }
 
 // writeMessagesToFile saves the slice of captured messages to a file as a JSON array.
-func writeMessagesToFile(filename string, messages []CapturedMessage) error {
+func writeMessagesToFile(filename string, messages []mqttconverter.CapturedMessage) error {
 	file, err := os.Create(filename)
 	if err != nil {
 		return fmt.Errorf("could not create file: %w", err)

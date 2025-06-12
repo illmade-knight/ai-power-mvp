@@ -1,10 +1,8 @@
-package main
+package mqttconverter
 
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,25 +17,6 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// --- Configuration Structs ---
-
-// MQTTClientConfig holds configuration for the Paho MQTT client.
-// JSON tags are for file-based loading, while duration fields are ignored
-// during standard unmarshaling to be handled manually.
-type MQTTClientConfig struct {
-	BrokerURL          string        `json:"broker_url"`
-	Topic              string        `json:"topic"`
-	ClientIDPrefix     string        `json:"client_id_prefix"`
-	Username           string        `json:"username,omitempty"`
-	Password           string        `json:"password,omitempty"`
-	KeepAlive          time.Duration `json:"-"`
-	ConnectTimeout     time.Duration `json:"-"`
-	CACertFile         string        `json:"ca_cert_file,omitempty"`
-	ClientCertFile     string        `json:"client_cert_file,omitempty"`
-	ClientKeyFile      string        `json:"client_key_file,omitempty"`
-	InsecureSkipVerify bool          `json:"insecure_skip_verify,omitempty"`
-}
-
 // CapturedMessage represents a single message saved to the output file.
 type CapturedMessage struct {
 	Timestamp time.Time       `json:"timestamp"`
@@ -49,7 +28,7 @@ type CapturedMessage struct {
 
 // Sampler encapsulates the logic for capturing MQTT messages.
 type Sampler struct {
-	config           *MQTTClientConfig
+	config           MQTTClientConfig
 	logger           zerolog.Logger
 	numMessages      int
 	client           mqtt.Client
@@ -60,7 +39,7 @@ type Sampler struct {
 }
 
 // NewSampler creates a new instance of the MQTT message sampler.
-func NewSampler(cfg *MQTTClientConfig, logger zerolog.Logger, numMessages int) *Sampler {
+func NewSampler(cfg MQTTClientConfig, logger zerolog.Logger, numMessages int) *Sampler {
 	return &Sampler{
 		config:           cfg,
 		logger:           logger,
@@ -159,7 +138,7 @@ func (s *Sampler) connect() mqtt.Client {
 	opts.SetOrderMatters(false)
 
 	if strings.HasPrefix(strings.ToLower(s.config.BrokerURL), "tls://") || strings.HasPrefix(strings.ToLower(s.config.BrokerURL), "ssl://") {
-		tlsConfig, err := newTLSConfig(s.config)
+		tlsConfig, err := newTLSConfig(&s.config, s.logger)
 		if err != nil {
 			s.logger.Error().Err(err).Msg("Failed to create TLS config")
 			return nil
@@ -191,7 +170,7 @@ func (s *Sampler) connect() mqtt.Client {
 // --- Helper Functions ---
 
 // loadMQTTClientConfigFromFile loads MQTT configuration from a JSON file.
-func loadMQTTClientConfigFromFile(filePath string) (*MQTTClientConfig, error) {
+func LoadMQTTClientConfigFromFile(filePath string) (*MQTTClientConfig, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config file %s: %w", filePath, err)
@@ -239,7 +218,7 @@ func loadMQTTClientConfigFromFile(filePath string) (*MQTTClientConfig, error) {
 	return &cfg, nil
 }
 
-// loadMQTTClientConfigFromEnv loads MQTT configuration from environment variables.
+// LoadMQTTClientConfigFromEnv loads MQTT configuration from environment variables.
 func loadMQTTClientConfigFromEnv() (*MQTTClientConfig, error) {
 	cfg := &MQTTClientConfig{
 		BrokerURL:      os.Getenv("MQTT_BROKER_URL"),
@@ -266,28 +245,4 @@ func loadMQTTClientConfigFromEnv() (*MQTTClientConfig, error) {
 		cfg.ClientIDPrefix = "mqtt-client-"
 	}
 	return cfg, nil
-}
-
-// newTLSConfig creates a TLS configuration for MQTT client.
-func newTLSConfig(cfg *MQTTClientConfig) (*tls.Config, error) {
-	tlsConfig := &tls.Config{InsecureSkipVerify: cfg.InsecureSkipVerify}
-	if cfg.CACertFile != "" {
-		caCert, err := os.ReadFile(cfg.CACertFile)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read CA cert file: %w", err)
-		}
-		caCertPool := x509.NewCertPool()
-		if !caCertPool.AppendCertsFromPEM(caCert) {
-			return nil, errors.New("failed to append CA cert to pool")
-		}
-		tlsConfig.RootCAs = caCertPool
-	}
-	if cfg.ClientCertFile != "" && cfg.ClientKeyFile != "" {
-		cert, err := tls.LoadX509KeyPair(cfg.ClientCertFile, cfg.ClientKeyFile)
-		if err != nil {
-			return nil, fmt.Errorf("failed to load client key pair: %w", err)
-		}
-		tlsConfig.Certificates = []tls.Certificate{cert}
-	}
-	return tlsConfig, nil
 }

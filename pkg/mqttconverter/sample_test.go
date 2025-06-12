@@ -1,4 +1,4 @@
-package main
+package mqttconverter
 
 import (
 	"context"
@@ -36,7 +36,7 @@ func TestSampler_Integration(t *testing.T) {
 	numTestMessages := 3
 
 	// Configure the sampler
-	cfg := &MQTTClientConfig{
+	cfg := MQTTClientConfig{
 		BrokerURL:      testBrokerURL,
 		Topic:          testTopic,
 		ClientIDPrefix: "sampler-integration-test-",
