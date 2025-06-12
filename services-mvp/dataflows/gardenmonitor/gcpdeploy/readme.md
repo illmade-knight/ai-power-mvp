@@ -94,8 +94,8 @@ This guide outlines the full lifecycle for your pipeline: provisioning infrastru
 This step is run locally. It connects to GCP to create resources and then generates deployment scripts tailored for a specific environment.
 
 1. **Update services.yaml**: Open the services.yaml file and set the correct project IDs and any other environment-specific values (like the default\_region or mqtt\_broker\_url).
-2. Run the Provisioning Script:  
-   From your terminal, run the provision.go script from within the deploy directory. Use the \-env flag to specify your target environment.
+2. Run the Provisioning Script:
+   At the moment vendoring is required as there are replace mod directives - a vendor flag can turn off vendoring if needed (will be false by default in future). From your terminal, run the provision.go script from within the deploy directory. Use the \-env flag to specify your target environment.
    * **For the Test Environment:**  
      \# This will save the scripts in your project's root directory  
      go run provision.go \-services-def=../services.yaml \-env=test \-output-dir=../

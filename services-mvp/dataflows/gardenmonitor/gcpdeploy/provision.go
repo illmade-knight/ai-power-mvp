@@ -31,6 +31,7 @@ type DeploymentConfig struct {
 	HealthCheckPath          string
 	HealthCheckPort          int
 	AllowUnauthenticatedFlag string
+	Vendor                   bool
 }
 
 type TeardownConfig struct {
@@ -48,6 +49,7 @@ func main() {
 	outputDir := flag.String("output-dir", "..", "Directory to save the generated deployment scripts.")
 	teardown := flag.Bool("teardown", false, "If true, tear down the resources for the specified environment instead of provisioning.")
 	allowUnauthenticated := flag.Bool("allow-unauthenticated", false, "If true, the generated deploy scripts will include the --allow-unauthenticated flag.")
+	vendor := flag.Bool("vendor", true, "If true, run 'go mod vendor' before deploying.")
 	flag.Parse()
 
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339})
@@ -64,6 +66,7 @@ func main() {
 	}
 
 	fullConfig, _ := servicesDef.GetTopLevelConfig()
+
 	envSpec := fullConfig.Environments[*env]
 
 	var region string
@@ -88,11 +91,11 @@ func main() {
 	if *teardown {
 		handleTeardown(ctx, manager, servicesDef, *env, *dataflowName, region, *outputDir)
 	} else {
-		handleProvisioning(ctx, manager, servicesDef, *env, *dataflowName, region, *outputDir, *allowUnauthenticated)
+		handleProvisioning(ctx, manager, servicesDef, *env, *dataflowName, region, *outputDir, *vendor, *allowUnauthenticated)
 	}
 }
 
-func handleProvisioning(ctx context.Context, manager *servicemanager.ServiceManager, servicesDef servicemanager.ServicesDefinition, env, dataflowName, region, outputDir string, allowUnauthenticated bool) {
+func handleProvisioning(ctx context.Context, manager *servicemanager.ServiceManager, servicesDef servicemanager.ServicesDefinition, env, dataflowName, region, outputDir string, vendor, allowUnauthenticated bool) {
 	log.Info().Msgf("Starting provisioning for environment '%s' in region '%s'", env, region)
 
 	projectID, err := servicesDef.GetProjectID(env)
@@ -108,7 +111,7 @@ func handleProvisioning(ctx context.Context, manager *servicemanager.ServiceMana
 
 	log.Info().Msg("Generating deployment scripts...")
 	fullConfig, _ := servicesDef.GetTopLevelConfig()
-	if err := generateDeploymentScripts(provisioned, fullConfig, projectID, env, region, outputDir, allowUnauthenticated); err != nil {
+	if err := generateDeploymentScripts(provisioned, fullConfig, projectID, env, region, outputDir, vendor, allowUnauthenticated); err != nil {
 		log.Fatal().Err(err).Msg("Failed to generate deployment scripts")
 	}
 
@@ -177,7 +180,7 @@ func buildMetadataEnvVars(metadata map[string]interface{}) string {
 	return strings.Join(envVars, ",")
 }
 
-func generateDeploymentScripts(prov *servicemanager.ProvisionedResources, cfg *servicemanager.TopLevelConfig, projectID, env, region, outputDir string, allowUnauthenticated bool) error {
+func generateDeploymentScripts(prov *servicemanager.ProvisionedResources, cfg *servicemanager.TopLevelConfig, projectID, env, region, outputDir string, vendor, allowUnauthenticated bool) error {
 	isWindows := runtime.GOOS == "windows"
 	var ingestionScriptTmpl, analysisScriptTmpl, scriptExt string
 	ingestionFilename := "deploy_ingestion"
@@ -207,6 +210,7 @@ func generateDeploymentScripts(prov *servicemanager.ProvisionedResources, cfg *s
 		MinInstances:             ingestionSpec.MinInstances,
 		AllEnvVars:               buildEnvVarString(ingestionStdVars, ingestionMetaVars),
 		AllowUnauthenticatedFlag: authFlag,
+		Vendor:                   vendor,
 	}
 	if ingestionSpec.HealthCheck != nil {
 		ingestionConfig.HealthCheckPort = ingestionSpec.HealthCheck.Port
@@ -228,6 +232,7 @@ func generateDeploymentScripts(prov *servicemanager.ProvisionedResources, cfg *s
 		MinInstances:             ingestionSpec.MinInstances,
 		AllEnvVars:               buildEnvVarString(analysisStdVars, analysisMetaVars),
 		AllowUnauthenticatedFlag: authFlag,
+		Vendor:                   vendor,
 	}
 	if analysisSpec.HealthCheck != nil {
 		analysisConfig.HealthCheckPort = analysisSpec.HealthCheck.Port

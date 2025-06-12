@@ -7,11 +7,13 @@ set SERVICE_NAME=analysis-service-test
 set REGION=europe-west1
 set SOURCE_PATH=bigquery
 
-:: --- Pre-deployment Steps ---
+
+:: --- Pre-deployment Steps (Vendoring) ---
 echo Vendoring dependencies for analysis-service...
 pushd %SOURCE_PATH%
 go mod vendor
 popd
+
 
 :: --- Deployment ---
 echo Deploying %SERVICE_NAME% from %SOURCE_PATH% to project %GCP_PROJECT_ID% in region %REGION%...
@@ -22,16 +24,17 @@ gcloud run deploy "%SERVICE_NAME%" ^
   --project "%GCP_PROJECT_ID%" ^
   --region "%REGION%" ^
   --no-allow-unauthenticated ^
-  --port=8080 ^
   --set-env-vars="APP_PROJECT_ID=gemini-power-test,APP_CONSUMER_SUBSCRIPTION_ID=test-analysis-service-sub,APP_BIGQUERY_DATASET_ID=test_device_analytics,APP_BIGQUERY_TABLE_ID=test_monitor_payloads" ^
   --liveness-probe=httpGet.path=/healthz ^
   --min-instances=1
+
 
 :: --- Post-deployment Cleanup ---
 echo Cleaning up vendor directory...
 if exist "%SOURCE_PATH%\\vendor" (
   rmdir /s /q "%SOURCE_PATH%\\vendor"
 )
+
 
 echo.
 echo ✅ Deployment of %SERVICE_NAME% complete.

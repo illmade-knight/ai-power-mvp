@@ -48,6 +48,9 @@ func (s *Server) Start() error {
 
 	// Set up and start the HTTP server for health checks.
 	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(writer http.ResponseWriter, request *http.Request) {
+		writer.WriteHeader(http.StatusOK)
+	})
 	mux.HandleFunc("/healthz", s.healthzHandler)
 	s.httpServer = &http.Server{
 		Addr:    s.config.HTTPPort,

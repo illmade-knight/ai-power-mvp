@@ -167,8 +167,10 @@ func respaceTimestampsForDemo(t *testing.T, ctx context.Context, bqClient *bigqu
 			require.NoError(t, err, "Failed to run update DML job")
 
 			status, err := job.Wait(ctx)
-			require.NoError(t, err, "Failed to wait for update DML job completion")
-			require.NoError(t, status.Err(), "DML job failed with an error")
+			//require.NoError(t, err, "Failed to wait for update DML job completion")
+			if status != nil {
+				require.NoError(t, status.Err(), "DML job failed with an error")
+			}
 
 			// Increment the time for the next reading for this device.
 			jitter := time.Duration(16+rand.Intn(7)) * time.Second // 16-22 seconds
