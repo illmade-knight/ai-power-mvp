@@ -27,6 +27,7 @@ type DeploymentConfig struct {
 	SourcePath               string
 	Region                   string
 	AllEnvVars               string
+	MinInstances             int
 	HealthCheckPath          string
 	HealthCheckPort          int
 	AllowUnauthenticatedFlag string
@@ -66,6 +67,7 @@ func main() {
 	envSpec := fullConfig.Environments[*env]
 
 	var region string
+	// Prioritize the environment-specific region, then fall back to the global default.
 	if envSpec.DefaultRegion != "" {
 		region = envSpec.DefaultRegion
 	} else {
@@ -202,6 +204,7 @@ func generateDeploymentScripts(prov *servicemanager.ProvisionedResources, cfg *s
 		ProjectID:                projectID,
 		Region:                   region,
 		SourcePath:               ingestionSpec.SourcePath,
+		MinInstances:             ingestionSpec.MinInstances,
 		AllEnvVars:               buildEnvVarString(ingestionStdVars, ingestionMetaVars),
 		AllowUnauthenticatedFlag: authFlag,
 	}
@@ -222,6 +225,7 @@ func generateDeploymentScripts(prov *servicemanager.ProvisionedResources, cfg *s
 		ProjectID:                projectID,
 		Region:                   region,
 		SourcePath:               analysisSpec.SourcePath,
+		MinInstances:             ingestionSpec.MinInstances,
 		AllEnvVars:               buildEnvVarString(analysisStdVars, analysisMetaVars),
 		AllowUnauthenticatedFlag: authFlag,
 	}

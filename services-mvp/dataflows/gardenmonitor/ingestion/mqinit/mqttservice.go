@@ -3,6 +3,8 @@ package mqinit
 import (
 	"context"
 	"fmt"
+	"github.com/rs/zerolog/log"
+	"net"
 	"net/http"
 	"time"
 
@@ -19,6 +21,7 @@ type Server struct {
 	config     *Config
 	service    *mqttconverter.IngestionService
 	httpServer *http.Server
+	listener   net.Listener // To get the actual address for testing
 }
 
 // NewServer creates and configures a new Server instance.
@@ -30,26 +33,47 @@ func NewServer(cfg *Config, service *mqttconverter.IngestionService, logger zero
 	}
 }
 
+// GetListenerAddr returns the address the HTTP server is listening on.
+// This is useful for tests that use a dynamic port (e.g., ":0").
+func (s *Server) GetListenerAddr() string {
+	if s.listener == nil {
+		return ""
+	}
+	return s.listener.Addr().String()
+}
+
 // Start runs the main application logic.
 func (s *Server) Start() error {
 	s.logger.Info().Msg("Starting MQTT ingestion server...")
 
 	// Start the ingestion service. This will connect to MQTT.
-	if err := s.service.Start(); err != nil {
-		return fmt.Errorf("failed to start ingestion service: %w", err)
-	}
-	s.logger.Info().Msg("MQTT ingestion service started.")
+	go func() {
+		if err := s.service.Start(); err != nil {
+			log.Error().Err(err).Msg("failed to start ingestion service")
+		}
+		s.logger.Info().Msg("MQTT ingestion service started.")
+	}()
 
 	// Set up and start the HTTP server for health checks.
 	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
 	mux.HandleFunc("/healthz", s.healthzHandler)
 	s.httpServer = &http.Server{
 		Addr:    s.config.HTTPPort,
 		Handler: mux,
 	}
 
-	s.logger.Info().Str("address", s.config.HTTPPort).Msg("Starting health check server.")
-	if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+	// Create the listener. If Addr is ":0", this will pick a free port.
+	l, err := net.Listen("tcp", s.httpServer.Addr)
+	if err != nil {
+		return fmt.Errorf("failed to create listener: %w", err)
+	}
+	s.listener = l
+
+	s.logger.Info().Str("address", s.GetListenerAddr()).Msg("Starting health check server.")
+	if err := s.httpServer.Serve(s.listener); err != nil && err != http.ErrServerClosed {
 		return fmt.Errorf("health check server failed: %w", err)
 	}
 

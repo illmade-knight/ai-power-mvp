@@ -216,7 +216,6 @@ func (s *IngestionService) Start() error {
 		s.logger.Info().Msg("IngestionService started without MQTT client (broker URL is empty).")
 		return nil
 	}
-	// If the MQTT broker URL is not set, we assume MQTT is disabled for this service.
 	if s.mqttClientConfig.KeepAlive == 0 {
 		s.mqttClientConfig.KeepAlive = 10 * time.Second
 		s.logger.Warn().Msg("mqtt config had a zero KeepAlive value - setting to 10 * time.Second")

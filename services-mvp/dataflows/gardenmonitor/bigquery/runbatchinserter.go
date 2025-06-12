@@ -32,6 +32,8 @@ func main() {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: zerolog.TimeFieldFormat})
 	log.Info().Msg("Logger configured.")
 
+	log.Info().Interface("cfg", cfg).Msg("Configuration")
+
 	// --- 3. Build BatchProcessing Components ---
 	ctx := context.Background()
 
@@ -49,6 +51,8 @@ func main() {
 		SubscriptionID:  cfg.Consumer.SubscriptionID,
 		CredentialsFile: cfg.Consumer.CredentialsFile,
 	}
+
+	log.Info().Interface("consumerCfg", consumerCfg).Msg("Created Pubsub consumer")
 	consumer, err := bqstore.NewGooglePubSubConsumer(ctx, consumerCfg, log.Logger)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to create Pub/Sub consumer")

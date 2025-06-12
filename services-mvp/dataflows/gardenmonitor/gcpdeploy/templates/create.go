@@ -16,6 +16,14 @@ SERVICE_NAME="ingestion-service-{{.Env}}"
 REGION="{{.Region}}"
 SOURCE_PATH="{{.SourcePath}}"
 
+# --- Pre-deployment Steps ---
+echo "Vendoring dependencies for ingestion-service..."
+# Use a subshell to run go mod vendor in the correct directory
+(cd "${SOURCE_PATH}" && go mod vendor)
+
+# Setup a trap to clean up the vendor directory on exit (success or failure)
+trap 'echo "Cleaning up vendor directory..."; (cd "${SOURCE_PATH}" && rm -rf vendor)' EXIT
+
 # --- Deployment ---
 echo "Deploying ${SERVICE_NAME} from ${SOURCE_PATH} to project ${GCP_PROJECT_ID} in region ${REGION}..."
 
@@ -27,7 +35,8 @@ gcloud run deploy "${SERVICE_NAME}" \
   {{.AllowUnauthenticatedFlag}} \
   --port={{.HealthCheckPort}} \
   --set-env-vars="{{.AllEnvVars}}" \
-  {{if .HealthCheckPath}}--liveness-probe=httpGet.path={{.HealthCheckPath}}{{end}}
+  {{if .HealthCheckPath}}--liveness-probe=httpGet.path={{.HealthCheckPath}}{{end}} \
+  {{if gt .MinInstances 0}}--min-instances={{.MinInstances}}{{end}}
 
 echo "✅ Deployment of ${SERVICE_NAME} complete."
 `
@@ -44,6 +53,14 @@ SERVICE_NAME="analysis-service-{{.Env}}"
 REGION="{{.Region}}"
 SOURCE_PATH="{{.SourcePath}}"
 
+# --- Pre-deployment Steps ---
+echo "Vendoring dependencies for analysis-service..."
+# Use a subshell to run go mod vendor in the correct directory
+(cd "${SOURCE_PATH}" && go mod vendor)
+
+# Setup a trap to clean up the vendor directory on exit (success or failure)
+trap 'echo "Cleaning up vendor directory..."; (cd "${SOURCE_PATH}" && rm -rf vendor)' EXIT
+
 # --- Deployment ---
 echo "Deploying ${SERVICE_NAME} from ${SOURCE_PATH} to project ${GCP_PROJECT_ID} in region ${REGION}..."
 
@@ -55,7 +72,8 @@ gcloud run deploy "${SERVICE_NAME}" \
   {{.AllowUnauthenticatedFlag}} \
   --port={{.HealthCheckPort}} \
   --set-env-vars="{{.AllEnvVars}}" \
-  {{if .HealthCheckPath}}--liveness-probe=httpGet.path={{.HealthCheckPath}}{{end}}
+  {{if .HealthCheckPath}}--liveness-probe=httpGet.path={{.HealthCheckPath}}{{end}} \
+  {{if gt .MinInstances 0}}--min-instances={{.MinInstances}}{{end}}
 
 echo "✅ Deployment of ${SERVICE_NAME} complete."
 `
@@ -71,6 +89,12 @@ set SERVICE_NAME=ingestion-service-{{.Env}}
 set REGION={{.Region}}
 set SOURCE_PATH={{.SourcePath}}
 
+:: --- Pre-deployment Steps ---
+echo Vendoring dependencies for ingestion-service...
+pushd %SOURCE_PATH%
+go mod vendor
+popd
+
 :: --- Deployment ---
 echo Deploying %SERVICE_NAME% from %SOURCE_PATH% to project %GCP_PROJECT_ID% in region %REGION%...
 
@@ -80,9 +104,15 @@ gcloud run deploy "%SERVICE_NAME%" ^
   --project "%GCP_PROJECT_ID%" ^
   --region "%REGION%" ^
   {{.AllowUnauthenticatedFlag}} ^
-  --port={{.HealthCheckPort}} ^
   --set-env-vars="{{.AllEnvVars}}" ^
-  {{if .HealthCheckPath}}--liveness-probe=httpGet.path={{.HealthCheckPath}}{{end}}
+  {{if .HealthCheckPath}}--liveness-probe=httpGet.path={{.HealthCheckPath}} ^{{end}}
+  {{if gt .MinInstances 0}}--min-instances={{.MinInstances}}{{end}}
+
+:: --- Post-deployment Cleanup ---
+echo Cleaning up vendor directory...
+if exist "%SOURCE_PATH%\\vendor" (
+  rmdir /s /q "%SOURCE_PATH%\\vendor"
+)
 
 echo.
 echo ✅ Deployment of %SERVICE_NAME% complete.
@@ -97,6 +127,12 @@ set SERVICE_NAME=analysis-service-{{.Env}}
 set REGION={{.Region}}
 set SOURCE_PATH={{.SourcePath}}
 
+:: --- Pre-deployment Steps ---
+echo Vendoring dependencies for analysis-service...
+pushd %SOURCE_PATH%
+go mod vendor
+popd
+
 :: --- Deployment ---
 echo Deploying %SERVICE_NAME% from %SOURCE_PATH% to project %GCP_PROJECT_ID% in region %REGION%...
 
@@ -106,9 +142,15 @@ gcloud run deploy "%SERVICE_NAME%" ^
   --project "%GCP_PROJECT_ID%" ^
   --region "%REGION%" ^
   {{.AllowUnauthenticatedFlag}} ^
-  --port={{.HealthCheckPort}} ^
   --set-env-vars="{{.AllEnvVars}}" ^
-  {{if .HealthCheckPath}}--liveness-probe=httpGet.path={{.HealthCheckPath}}{{end}}
+  {{if .HealthCheckPath}}--liveness-probe=httpGet.path={{.HealthCheckPath}} ^{{end}}
+  {{if gt .MinInstances 0}}--min-instances={{.MinInstances}}{{end}}
+
+:: --- Post-deployment Cleanup ---
+echo Cleaning up vendor directory...
+if exist "%SOURCE_PATH%\\vendor" (
+  rmdir /s /q "%SOURCE_PATH%\\vendor"
+)
 
 echo.
 echo ✅ Deployment of %SERVICE_NAME% complete.

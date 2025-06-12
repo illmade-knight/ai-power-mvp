@@ -32,6 +32,10 @@ func NewServer(cfg *Config, b *bqstore.ProcessingService[types.GardenMonitorPayl
 	}
 }
 
+func (s *Server) GetHTTPPort() string {
+	return s.config.HTTPPort
+}
+
 // Start runs the main application logic.
 func (s *Server) Start() error {
 	s.logger.Info().Msg("Starting server...")

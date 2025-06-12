@@ -1,6 +1,8 @@
 package mqinit
 
 import (
+	"github.com/rs/zerolog/log"
+	"os"
 	"strings"
 	"time"
 
@@ -36,13 +38,20 @@ func LoadConfig() (*Config, error) {
 	v := viper.New()
 
 	// --- 1. Set Defaults ---
+	v.SetDefault("project_id", "default-project-id")
+
 	v.SetDefault("log_level", "info")
 	v.SetDefault("http_port", ":8081") // Different default port
-	v.SetDefault("service.input_chan_capacity", 5000)
-	v.SetDefault("service.num_processing_workers", 20)
+	v.SetDefault("mqtt.broker_url", "default-broker-url")
+	v.SetDefault("mqtt.broker_topic", "default-topic")
 	v.SetDefault("mqtt.client_id_prefix", "mqtt-ingestion-service-")
 	v.SetDefault("mqtt.keep_alive", 60*time.Second)
 	v.SetDefault("mqtt.connect_timeout", 10*time.Second)
+
+	v.SetDefault("service.input_chan_capacity", 5000)
+	v.SetDefault("service.num_processing_workers", 20)
+	v.SetDefault("publisher.topic_id", "default-subscription-id")
+	v.SetDefault("publisher.credentials_file", "")
 
 	// --- 2. Set up pflag for command-line overrides ---
 	pflag.String("config", "config-mqtt.yaml", "Path to MQTT config file")
@@ -69,7 +78,7 @@ func LoadConfig() (*Config, error) {
 
 	if err := v.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-			return nil, err
+			log.Info().Msg("config file not found using defaults, flags or environment")
 		}
 	}
 
@@ -112,6 +121,14 @@ func LoadConfig() (*Config, error) {
 	}
 	// For secret-like values, prefer environment variables
 	cfg.MQTT.Password = v.GetString("mqtt_password")
+
+	// --- 6. Explicitly check for Cloud Run PORT environment variable ---
+	// The PORT env var is set by the Cloud Run environment.
+	// It should take precedence over any other configuration.
+	if port := os.Getenv("PORT"); port != "" {
+		log.Info().Str("old", cfg.HTTPPort).Str("new", port).Msg("Prefer deployment port")
+		cfg.HTTPPort = ":" + port
+	}
 
 	return &cfg, nil
 }
