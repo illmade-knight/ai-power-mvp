@@ -10,7 +10,7 @@ Thanks Gemini, we're pretty familiar with microservices so for us it's more simp
 than transition to microservices later.
 
 ### The device
-We've picked our initial device in [device/xdevice](devices/xdevice) which operates over LoRA. 
+We've picked our initial device in [device/xdevice](micro/devices/xdevice) which operates over LoRA. 
 We register our devices with a data broker and get a MQTT stream from the data broker.
 
 ### The ingestion service
@@ -35,4 +35,4 @@ Sanity check this approach for us and then we'll move on to implement the servic
 ````
 
 following the 'positive' [response](response.md) we start implementing the service in
-the [ingestion](ingestion) folder.
+the [ingestion](micro/ingestion) folder.

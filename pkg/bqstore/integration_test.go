@@ -18,23 +18,20 @@ import (
 
 	"cloud.google.com/go/bigquery"
 	"cloud.google.com/go/pubsub"
+	"github.com/illmade-knight/ai-power-mpv/pkg/bqstore"
+	"github.com/illmade-knight/ai-power-mpv/pkg/consumers" // Using shared consumers package
+	//"github.com/illmade-knight/ai-power-mpv/pkg/types"    // Using shared types package
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 
-	// Import the new generic bqstore package
-	"github.com/illmade-knight/ai-power-mpv/pkg/bqstore" // <-- IMPORTANT: Replace with the actual import path of your new library
-
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 // --- Test-Specific Data Structures ---
-// These are defined here to make the test self-contained. In a real project,
-// they might be imported from a types package.
-
 type GardenMonitorMessage struct {
 	Topic     string                `json:"topic"`
 	MessageID string                `json:"message_id"`
@@ -58,16 +55,13 @@ type GardenMonitorPayload struct {
 	AmbientLight int    `json:"AM" bigquery:"ambient_light"`
 }
 
-// --- Constants for the integration test environment ---
+// --- Constants for the integration test environment (Unchanged) ---
 const (
-	// Pub/Sub Emulator Test Config
-	testPubSubEmulatorImage = "gcr.io/google.com/cloudsdktool/cloud-sdk:emulators"
-	testPubSubEmulatorPort  = "8085/tcp"
-	testProjectID           = "test-garden-project"
-	testInputTopicID        = "garden-monitor-topic"
-	testInputSubscriptionID = "garden-monitor-sub"
-
-	// BigQuery Emulator Test Config
+	testPubSubEmulatorImage   = "gcr.io/google.com/cloudsdktool/cloud-sdk:emulators"
+	testPubSubEmulatorPort    = "8085/tcp"
+	testProjectID             = "test-garden-project"
+	testInputTopicID          = "garden-monitor-topic"
+	testInputSubscriptionID   = "garden-monitor-sub"
 	testBigQueryEmulatorImage = "ghcr.io/goccy/bigquery-emulator:0.6.6"
 	testBigQueryGRPCPortStr   = "9060"
 	testBigQueryRestPortStr   = "9050"
@@ -75,13 +69,10 @@ const (
 	testBigQueryRestPort      = testBigQueryRestPortStr + "/tcp"
 	testBigQueryDatasetID     = "garden_data_dataset"
 	testBigQueryTableID       = "monitor_payloads"
-
-	// Device specific constants for test message
-	testDeviceUID = "GARDEN_MONITOR_001"
+	testDeviceUID             = "GARDEN_MONITOR_001"
 )
 
-// --- Emulator Setup Helpers (Unchanged as requested) ---
-
+// --- Emulator Setup Helpers (Unchanged) ---
 func newEmulatorBigQueryClient(ctx context.Context, t *testing.T, projectID string) *bigquery.Client {
 	t.Helper()
 	emulatorHost := os.Getenv("BIGQUERY_API_ENDPOINT")
@@ -98,8 +89,7 @@ func newEmulatorBigQueryClient(ctx context.Context, t *testing.T, projectID stri
 	return client
 }
 
-func setupPubSubEmulatorForProcessingTest(t *testing.T, ctx context.Context) (emulatorHost string, cleanupFunc func()) {
-	// ... This function's implementation is identical to the original ...
+func setupPubSubEmulatorForProcessingTest(t *testing.T, ctx context.Context) (string, func()) {
 	t.Helper()
 	req := testcontainers.ContainerRequest{
 		Image:        testPubSubEmulatorImage,
@@ -114,11 +104,10 @@ func setupPubSubEmulatorForProcessingTest(t *testing.T, ctx context.Context) (em
 	require.NoError(t, err)
 	port, err := container.MappedPort(ctx, testPubSubEmulatorPort)
 	require.NoError(t, err)
-	emulatorHost = fmt.Sprintf("%s:%s", host, port.Port())
+	emulatorHost := fmt.Sprintf("%s:%s", host, port.Port())
 	t.Logf("Pub/Sub emulator container started, listening on: %s", emulatorHost)
 	t.Setenv("PUBSUB_EMULATOR_HOST", emulatorHost)
 
-	// Create an admin client to set up the topic and subscription.
 	adminClient, err := pubsub.NewClient(ctx, testProjectID)
 	require.NoError(t, err)
 	defer adminClient.Close()
@@ -144,9 +133,7 @@ func setupPubSubEmulatorForProcessingTest(t *testing.T, ctx context.Context) (em
 	}
 }
 
-func setupBigQueryEmulatorForProcessingTest(t *testing.T, ctx context.Context) (cleanupFunc func()) {
-	// ... This function's implementation is identical to the original ...
-	// The explicit table creation with a known schema is still useful for a test.
+func setupBigQueryEmulatorForProcessingTest(t *testing.T, ctx context.Context) func() {
 	t.Helper()
 	req := testcontainers.ContainerRequest{
 		Image:        testBigQueryEmulatorImage,
@@ -175,7 +162,6 @@ func setupBigQueryEmulatorForProcessingTest(t *testing.T, ctx context.Context) (
 	require.NoError(t, err)
 	emulatorRESTHost := fmt.Sprintf("http://%s:%s", host, restMappedPort.Port())
 
-	// Set environment variables for the clients.
 	t.Setenv("GOOGLE_CLOUD_PROJECT", testProjectID)
 	t.Setenv("BIGQUERY_EMULATOR_HOST", emulatorGRPCHost)
 	t.Setenv("BIGQUERY_API_ENDPOINT", emulatorRESTHost)
@@ -194,7 +180,6 @@ func setupBigQueryEmulatorForProcessingTest(t *testing.T, ctx context.Context) (
 	schema, err := bigquery.InferSchema(GardenMonitorPayload{})
 	require.NoError(t, err, "Failed to infer schema from GardenMonitorPayload")
 
-	// Create a simple, non-partitioned table.
 	tableMeta := &bigquery.TableMetadata{Name: testBigQueryTableID, Schema: schema}
 	err = table.Create(ctx, tableMeta)
 	if err != nil && !strings.Contains(err.Error(), "Already Exists") {
@@ -205,28 +190,24 @@ func setupBigQueryEmulatorForProcessingTest(t *testing.T, ctx context.Context) (
 	}
 }
 
-// TestProcessingService_Integration_FullFlow tests the entire generic bqstore flow.
-func TestProcessingService_Integration_FullFlow(t *testing.T) {
+// TestBigQueryService_Integration_FullFlow tests the entire generic bqstore flow.
+func TestBigQueryService_Integration_FullFlow(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 
-	pubsubEmulatorHost, pubsubEmulatorCleanup := setupPubSubEmulatorForProcessingTest(t, ctx)
+	_, pubsubEmulatorCleanup := setupPubSubEmulatorForProcessingTest(t, ctx)
 	defer pubsubEmulatorCleanup()
 	bqEmulatorCleanup := setupBigQueryEmulatorForProcessingTest(t, ctx)
 	defer bqEmulatorCleanup()
 
-	// --- Configuration setup ---
+	// --- Configuration setup (Unchanged) ---
 	var logBuf bytes.Buffer
 	writer := io.MultiWriter(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339}, &logBuf)
 	logger := zerolog.New(writer).Level(zerolog.DebugLevel).With().Timestamp().Logger()
 
-	// Create configs directly instead of loading from env for better test isolation.
-	consumerCfg := &bqstore.GooglePubSubConsumerConfig{
+	consumerCfg := &consumers.GooglePubSubConsumerConfig{
 		ProjectID:      testProjectID,
 		SubscriptionID: testInputSubscriptionID,
-	}
-	serviceCfg := &bqstore.ServiceConfig{
-		NumProcessingWorkers: 2,
 	}
 	batcherCfg := &bqstore.BatchInserterConfig{
 		BatchSize:    5,
@@ -238,55 +219,52 @@ func TestProcessingService_Integration_FullFlow(t *testing.T) {
 		TableID:   testBigQueryTableID,
 	}
 
-	// --- Define the Decoder for the specific test type ---
-	// This is the implementation of the PayloadDecoder[T] for our GardenMonitorPayload.
+	// --- Define the Decoder (Unchanged) ---
 	gardenPayloadDecoder := func(payload []byte) (*GardenMonitorPayload, error) {
 		var upstreamMsg GardenMonitorMessage
 		if err := json.Unmarshal(payload, &upstreamMsg); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal upstream message: %w", err)
 		}
-		// The payload inside the message could be nil.
 		return upstreamMsg.Payload, nil
 	}
 
-	// --- Initialize Generic BatchProcessing Components ---
-	consumer, err := bqstore.NewGooglePubSubConsumer(ctx, consumerCfg, logger)
+	// --- Initialize Components with new, refactored structure ---
+	consumer, err := consumers.NewGooglePubSubConsumer(ctx, consumerCfg, logger)
 	require.NoError(t, err)
 
 	bqClient := newEmulatorBigQueryClient(ctx, t, bqInserterCfg.ProjectID)
 	require.NotNil(t, bqClient)
 	defer bqClient.Close()
 
-	// Instantiate generic components with the concrete type: GardenMonitorPayload
 	bigQueryInserter, err := bqstore.NewBigQueryInserter[GardenMonitorPayload](ctx, bqClient, bqInserterCfg, logger)
 	require.NoError(t, err)
 
 	batchInserter := bqstore.NewBatchInserter[GardenMonitorPayload](batcherCfg, bigQueryInserter, logger)
 
-	processingService, err := bqstore.NewBatchingService[GardenMonitorPayload](serviceCfg, consumer, batchInserter, gardenPayloadDecoder, logger)
+	// *** REFACTORED PART: Use the new service constructor ***
+	numWorkers := 2
+	processingService, err := bqstore.NewBigQueryService[GardenMonitorPayload](numWorkers, consumer, batchInserter, gardenPayloadDecoder, logger)
 	require.NoError(t, err)
 
-	// --- Test Execution ---
+	// --- Test Execution (Unchanged) ---
 	go func() {
 		err := processingService.Start()
 		assert.NoError(t, err, "ProcessingService.Start() should not return an error on graceful shutdown")
 	}()
 
 	const messageCount = 7
-	pubsubTestPublisherClient, err := pubsub.NewClient(ctx, testProjectID, option.WithEndpoint(pubsubEmulatorHost), option.WithoutAuthentication())
+	pubsubTestPublisherClient, err := pubsub.NewClient(ctx, testProjectID)
 	require.NoError(t, err)
 	defer pubsubTestPublisherClient.Close()
 	inputTopic := pubsubTestPublisherClient.Topic(testInputTopicID)
 	defer inputTopic.Stop()
 
 	var lastTestPayload GardenMonitorPayload
-	// Publishing logic is identical to original test.
 	for i := 0; i < messageCount; i++ {
 		testPayload := GardenMonitorPayload{
 			UID:      testDeviceUID,
 			Sequence: 1337 + i,
 			Battery:  95 - i,
-			// ... (other fields omitted for brevity but would be here) ...
 		}
 		lastTestPayload = testPayload
 
@@ -305,17 +283,15 @@ func TestProcessingService_Integration_FullFlow(t *testing.T) {
 	}
 	t.Logf("%d test messages published to Pub/Sub topic: %s", messageCount, testInputTopicID)
 
-	// Stop the service to flush the final batch.
-	time.Sleep(2 * time.Second) // Give workers time to process some messages.
+	time.Sleep(2 * time.Second)
 	processingService.Stop()
-	time.Sleep(2 * time.Second) // Give the emulator a moment to commit writes.
+	time.Sleep(2 * time.Second)
 
-	// --- Verification Step (Identical to original test) ---
+	// --- Verification Step (Unchanged) ---
 	queryClient := newEmulatorBigQueryClient(ctx, t, testProjectID)
 	defer queryClient.Close()
 
-	queryString := fmt.Sprintf("SELECT * FROM `%s.%s` WHERE uid = @uid ORDER BY sequence",
-		testBigQueryDatasetID, testBigQueryTableID)
+	queryString := fmt.Sprintf("SELECT * FROM `%s.%s` WHERE uid = @uid ORDER BY sequence", testBigQueryDatasetID, testBigQueryTableID)
 	query := queryClient.Query(queryString)
 	query.Parameters = []bigquery.QueryParameter{{Name: "uid", Value: testDeviceUID}}
 

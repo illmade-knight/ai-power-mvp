@@ -20,7 +20,7 @@ func main() {
 	// 2. Parse command-line flags
 	numMessages := flag.Int("n", 10, "Number of messages to capture before exiting.")
 	outputFile := flag.String("o", "mqtt_samples.json", "Output file to save the captured messages.")
-	configFile := flag.String("c", "sampler/test.json", "Configuration file to use")
+	configFile := flag.String("c", "helpers/sampler/test.json", "Configuration file to use")
 
 	flag.Parse()
 

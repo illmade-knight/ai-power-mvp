@@ -24,9 +24,9 @@ go.work.sum
 # env file
 .env
 .idea
-/services-mvp/load_test/v1/orchestrate/bin/
-/services-mvp/load_test/v1/orchestrate/
+/services-mvp/micro/load_test/v1/orchestrate/bin/
+/services-mvp/micro/load_test/v1/orchestrate/
 /pkg/helpers/sampler/test*.json
-/services-mvp/ingestion/v2/mqtttopubsub/mqtt_samples*.json
+/services-mvp/micro/ingestion/v2/mqtttopubsub/mqtt_samples*.json
 
 vendor

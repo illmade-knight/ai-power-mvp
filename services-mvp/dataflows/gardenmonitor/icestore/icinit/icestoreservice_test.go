@@ -1,4 +1,4 @@
-package bqinit_test
+package icinit_test
 
 import (
 	"bigquery/bqinit"

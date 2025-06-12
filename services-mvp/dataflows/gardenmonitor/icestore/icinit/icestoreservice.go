@@ -1,4 +1,4 @@
-package bqinit
+package icinit
 
 import (
 	"context"

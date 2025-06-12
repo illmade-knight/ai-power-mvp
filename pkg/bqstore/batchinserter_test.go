@@ -31,7 +31,7 @@ func TestBatchInserter_BatchSizeTrigger(t *testing.T) {
 
 	// Send 3 messages, which should trigger an immediate flush.
 	for i := 0; i < 3; i++ {
-		batcher.Input() <- &bqstore.BatchedMessage[testPayload]{
+		batcher.Input() <- &types.BatchedMessage[testPayload]{
 			Payload: &testPayload{ID: i},
 		}
 	}
@@ -60,7 +60,7 @@ func TestBatchInserter_FlushTimeoutTrigger(t *testing.T) {
 
 	// Send 2 messages, fewer than the batch size.
 	for i := 0; i < 2; i++ {
-		batcher.Input() <- &bqstore.BatchedMessage[testPayload]{
+		batcher.Input() <- &types.BatchedMessage[testPayload]{
 			Payload: &testPayload{ID: i},
 		}
 	}
@@ -88,7 +88,7 @@ func TestBatchInserter_StopFlushesFinalBatch(t *testing.T) {
 
 	// Send a partial batch.
 	for i := 0; i < 4; i++ {
-		batcher.Input() <- &bqstore.BatchedMessage[testPayload]{
+		batcher.Input() <- &types.BatchedMessage[testPayload]{
 			Payload: &testPayload{ID: i},
 		}
 	}
@@ -118,8 +118,8 @@ func TestBatchInserter_AckNackLogic(t *testing.T) {
 
 		var ackCount, nackCount int
 		var mu sync.Mutex
-		createMessage := func(id int) *bqstore.BatchedMessage[testPayload] {
-			return &bqstore.BatchedMessage[testPayload]{
+		createMessage := func(id int) *types.BatchedMessage[testPayload] {
+			return &types.BatchedMessage[testPayload]{
 				Payload: &testPayload{ID: id},
 				OriginalMessage: types.ConsumedMessage{
 					Ack:  func() { mu.Lock(); ackCount++; mu.Unlock() },
@@ -153,8 +153,8 @@ func TestBatchInserter_AckNackLogic(t *testing.T) {
 
 		var ackCount, nackCount int
 		var mu sync.Mutex
-		createMessage := func(id int) *bqstore.BatchedMessage[testPayload] {
-			return &bqstore.BatchedMessage[testPayload]{
+		createMessage := func(id int) *types.BatchedMessage[testPayload] {
+			return &types.BatchedMessage[testPayload]{
 				Payload: &testPayload{ID: id},
 				OriginalMessage: types.ConsumedMessage{
 					Ack:  func() { mu.Lock(); ackCount++; mu.Unlock() },

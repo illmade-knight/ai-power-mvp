@@ -6,6 +6,36 @@ import (
 	"time"
 )
 
+// GardenMonitorMessage represents the full structure of the message as it
+// arrives from the Pub/Sub topic.
+type GardenMonitorMessage struct {
+	Payload *GardenMonitorPayload `json:"payload"`
+	// Other top-level fields from the message can be added here if needed.
+}
+
+// NewGardenMonitorDecoder creates the specific PayloadDecoder for the GardenMonitorPayload.
+//
+// This function is the bridge between the raw message bytes from the consumer and the
+// structured data that the bqstore library needs. It knows how to parse the outer
+// message structure and extract the inner payload that needs to be saved to BigQuery.
+func NewGardenMonitorDecoder() func(payload []byte) (*GardenMonitorPayload, error) {
+	return func(payload []byte) (*GardenMonitorPayload, error) {
+		var upstreamMsg GardenMonitorMessage
+		if err := json.Unmarshal(payload, &upstreamMsg); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal upstream GardenMonitorMessage: %w", err)
+		}
+
+		// The service should only process messages that have a non-nil payload.
+		// If the payload is nil, the decoder returns nil, and the generic
+		// ProcessingService will automatically ack and skip the message.
+		if upstreamMsg.Payload == nil {
+			return nil, nil
+		}
+
+		return upstreamMsg.Payload, nil
+	}
+}
+
 // GardenMonitorDecoder is the specific implementation of PayloadDecoder for our message type.
 // It decodes the raw Pub/Sub message payload into our target struct.
 func GardenMonitorDecoder(payload []byte) (*GardenMonitorPayload, error) {
@@ -25,11 +55,6 @@ func GardenMonitorDecoder(payload []byte) (*GardenMonitorPayload, error) {
 }
 
 // --- Garden Monitor Specific Types ---
-
-// GardenMonitorMessage is the expected structure of the JSON message from Pub/Sub.
-type GardenMonitorMessage struct {
-	Payload *GardenMonitorPayload `json:"payload"`
-}
 
 // GardenMonitorPayload is the data structure that will be inserted into BigQuery.
 // The `bigquery` tags are used by the bqstore library to infer the table schema.
