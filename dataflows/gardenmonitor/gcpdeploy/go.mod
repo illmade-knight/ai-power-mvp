@@ -1,10 +1,9 @@
-module servicediscovery
+module gcpdeploy
 
 go 1.23.0
 
 require (
-	github.com/go-chi/chi/v5 v5.2.1
-	github.com/illmade-knight/ai-power-mpv/pkg v0.0.0
+	github.com/illmade-knight/go-iot/pkg v0.0.0-20250613211930-009a6a250a72
 	github.com/rs/zerolog v1.34.0
 )
 
@@ -37,7 +36,7 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.6 // indirect
 	github.com/googleapis/gax-go/v2 v2.14.2 // indirect
-	github.com/illmade-knight/ai-power-mvp/gen/go/protos/telemetry v0.0.0-20250609090345-5c9523977e29 // indirect
+	github.com/illmade-knight/go-iot/gen/go/protos/telemetry v0.0.0-20250613202916-805cbe86fc36 // indirect
 	github.com/klauspost/compress v1.17.4 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.5 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
@@ -70,11 +69,9 @@ require (
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
 	google.golang.org/api v0.237.0 // indirect
 	google.golang.org/genproto v0.0.0-20250505200425-f936aa4a68b2 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20250528174236-200df99c418a // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20250512202823-5a2f75b736a9 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250603155806-513f23925822 // indirect
 	google.golang.org/grpc v1.73.0 // indirect
 	google.golang.org/protobuf v1.36.6 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/illmade-knight/ai-power-mpv/pkg => ../../pkg
