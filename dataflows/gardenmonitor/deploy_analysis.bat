@@ -8,12 +8,6 @@ set REGION=europe-west1
 set SOURCE_PATH=bigquery
 
 
-:: --- Pre-deployment Steps (Vendoring) ---
-echo Vendoring dependencies for analysis-service...
-pushd %SOURCE_PATH%
-go mod vendor
-popd
-
 
 :: --- Deployment ---
 echo Deploying %SERVICE_NAME% from %SOURCE_PATH% to project %GCP_PROJECT_ID% in region %REGION%...
@@ -28,12 +22,6 @@ gcloud run deploy "%SERVICE_NAME%" ^
   --liveness-probe=httpGet.path=/healthz ^
   --min-instances=1
 
-
-:: --- Post-deployment Cleanup ---
-echo Cleaning up vendor directory...
-if exist "%SOURCE_PATH%\\vendor" (
-  rmdir /s /q "%SOURCE_PATH%\\vendor"
-)
 
 
 echo.

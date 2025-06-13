@@ -8,7 +8,10 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/illmade-knight/ai-power-mvp/dataflows/gardenmonitor/bigquery/bqinit"
+	"github.com/illmade-knight/ai-power-mvp/dataflows/gardenmonitor/ingestion/mqinit"
 	"github.com/illmade-knight/go-iot/pkg/consumers"
+	"github.com/testcontainers/testcontainers-go"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -26,9 +29,6 @@ import (
 
 	"cloud.google.com/go/bigquery"
 	"google.golang.org/api/iterator"
-
-	"bigquery/bqinit"
-	"ingestion/mqinit"
 
 	"github.com/illmade-knight/go-iot/pkg/bqstore"
 	"github.com/illmade-knight/go-iot/pkg/helpers/loadgen"

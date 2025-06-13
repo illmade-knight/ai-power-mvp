@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"ingestion/mqinit"
+	"github.com/illmade-knight/ai-power-mvp/dataflows/gardenmonitor/ingestion/mqinit"
 	"os"
 	"os/signal"
 	"syscall"

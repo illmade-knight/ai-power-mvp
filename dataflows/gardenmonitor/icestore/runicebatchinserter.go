@@ -1,9 +1,9 @@
 package main
 
 import (
-	"bigquery/icinit"
 	"cloud.google.com/go/storage"
 	"context"
+	"github.com/illmade-knight/ai-power-mvp/dataflows/gardenmonitor/icestore/icinit"
 	"github.com/illmade-knight/go-iot/pkg/icestore"
 	"google.golang.org/api/option"
 	"os"

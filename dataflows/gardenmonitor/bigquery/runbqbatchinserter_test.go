@@ -6,13 +6,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/illmade-knight/ai-power-mvp/dataflows/gardenmonitor/bigquery/bqinit"
 	"net/http"
 	"os"
 	"strings"
 	"testing"
 	"time"
-
-	"bigquery/bqinit"
 
 	"cloud.google.com/go/bigquery"
 	"cloud.google.com/go/pubsub"

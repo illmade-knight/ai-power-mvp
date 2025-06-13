@@ -9,6 +9,7 @@ import (
 	"fmt"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/illmade-knight/go-iot/pkg/consumers"
+	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 	"os"
 	"path/filepath"
@@ -26,8 +27,8 @@ import (
 	"google.golang.org/api/iterator"
 
 	// Import initializers for both services
-	"bigquery/bqinit"
-	"ingestion/mqinit"
+	"github.com/illmade-knight/ai-power-mvp/dataflows/gardenmonitor/bigquery/bqinit"
+	"github.com/illmade-knight/ai-power-mvp/dataflows/gardenmonitor/ingestion/mqinit"
 
 	// Import library packages
 	"github.com/illmade-knight/go-iot/pkg/bqstore"

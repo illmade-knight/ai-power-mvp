@@ -9,7 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/illmade-knight/go-iot/pkg/consumers"
-	"ingestion/mqinit"
+	"github.com/testcontainers/testcontainers-go"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -27,7 +27,8 @@ import (
 	"google.golang.org/api/option"
 
 	// Import initializers for both services
-	"bigquery/bqinit"
+	"github.com/illmade-knight/ai-power-mvp/dataflows/gardenmonitor/bigquery/bqinit"
+	"github.com/illmade-knight/ai-power-mvp/dataflows/gardenmonitor/ingestion/mqinit"
 
 	// Import library packages
 	"github.com/illmade-knight/go-iot/pkg/bqstore"

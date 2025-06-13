@@ -2,7 +2,7 @@ package mqinit_test
 
 import (
 	"context"
-	"ingestion/mqinit"
+	"github.com/illmade-knight/ai-power-mvp/dataflows/gardenmonitor/ingestion/mqinit"
 	"net/http"
 	"testing"
 	"time"

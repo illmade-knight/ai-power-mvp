@@ -1,8 +1,8 @@
 package icinit_test
 
 import (
-	"bigquery/icinit"
 	"context"
+	"github.com/illmade-knight/ai-power-mvp/dataflows/gardenmonitor/icestore/icinit"
 	"net/http"
 	"net/http/httptest"
 	"testing"

@@ -1,4 +1,4 @@
-module ingestion
+module github.com/illmade-knight/ai-power-mvp/dataflows/gardenmonitor/ingestion
 
 go 1.23.0
 

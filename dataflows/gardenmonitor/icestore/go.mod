@@ -1,4 +1,4 @@
-module bigquery
+module github.com/illmade-knight/ai-power-mvp/dataflows/gardenmonitor/icestore
 
 go 1.23.0
 
