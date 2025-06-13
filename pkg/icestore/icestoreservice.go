@@ -11,34 +11,53 @@ import (
 // This file provides a convenience constructor for creating an icestore-specific
 // processing service. It leverages the generic ProcessingService from the
 // shared consumers package.
+// REFACTORED: All generic types have been removed. This package is now specific
+// to archiving ArchivalData.
 // ====================================================================================
 
 // NewIceStorageService is a constructor function that assembles and returns a fully configured
-// GCS archival pipeline.
-//
-// It takes the icestore-specific Batcher and wires it into the generic
-// ProcessingService from the shared consumers package. This demonstrates how the
-// shared pipeline can be easily adapted for the icestore backend.
-func NewIceStorageService[T any](
+// GCS archival pipeline. It is now specific to processing ArchivalData.
+func NewIceStorageService(
 	numWorkers int,
 	consumer consumers.MessageConsumer,
-	batcher *Batcher[T], // The icestore-specific processor
-	decoder consumers.PayloadDecoder[T],
+	batcher *Batcher, // Non-generic
+	transformer consumers.MessageTransformer[ArchivalData], // Explicit type
 	logger zerolog.Logger,
-) (*consumers.ProcessingService[T], error) {
+) (*consumers.ProcessingService[ArchivalData], error) {
 
-	// The icestore.Batcher already satisfies the consumers.MessageProcessor interface,
-	// so we can pass it directly to the generic service constructor.
-	genericService, err := consumers.NewProcessingService[T](
+	// The consumers.ProcessingService is still generic, so we specify that it
+	// will be handling the ArchivalData type.
+	processingService, err := consumers.NewProcessingService[ArchivalData](
 		numWorkers,
 		consumer,
-		batcher, // Pass the Batcher as the MessageProcessor
-		decoder,
+		batcher, // Pass the non-generic Batcher
+		transformer,
 		logger,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create generic processing service for icestore: %w", err)
+		return nil, fmt.Errorf("failed to create processing service for icestore: %w", err)
 	}
 
-	return genericService, nil
+	return processingService, nil
+}
+
+// NewGCSBatchProcessor is a high-level convenience constructor that creates a
+// complete GCS archival pipeline component (uploader + batcher) that satisfies the
+// consumers.MessageProcessor interface.
+func NewGCSBatchProcessor(
+	gcsClient GCSClient,
+	batchCfg *BatcherConfig,
+	uploaderCfg GCSBatchUploaderConfig,
+	logger zerolog.Logger,
+) (*Batcher, error) {
+	// 1. Create the underlying GCS-specific data uploader.
+	gcsUploader, err := NewGCSBatchUploader(gcsClient, uploaderCfg, logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GCS uploader: %w", err)
+	}
+
+	// 2. Wrap the GCS uploader with the batching logic.
+	batcher := NewBatcher(batchCfg, gcsUploader, logger)
+
+	return batcher, nil
 }

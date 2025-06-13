@@ -3,219 +3,186 @@ package icestore
 import (
 	"context"
 	"errors"
-	"github.com/illmade-knight/ai-power-mpv/pkg/types"
-	"io"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/illmade-knight/ai-power-mpv/pkg/types"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
-// ====================================================================================
-// Mocks for Testing
-// ====================================================================================
-
-// mockUploader is a mock implementation of the DataBatchUploader interface.
-// It allows us to assert that UploadBatch is called with the correct data
-// and to simulate success or failure.
-type mockUploader[T any] struct {
-	mock.Mock
+// mockFinalUploader is a mock implementation of the non-generic DataUploader interface.
+type mockFinalUploader struct {
+	sync.Mutex
+	InsertBatchFn func(ctx context.Context, items []*ArchivalData) error
+	callCount     int
+	receivedItems [][]*ArchivalData
 }
 
-func (m *mockUploader[T]) UploadBatch(ctx context.Context, items []*T) error {
-	// Register the call with the mock framework, including the arguments.
-	args := m.Called(ctx, items)
-	// Return the first value, which is the error to be returned by the mock.
-	return args.Error(0)
+func (m *mockFinalUploader) UploadBatch(ctx context.Context, items []*ArchivalData) error {
+	m.Lock()
+	defer m.Unlock()
+	m.callCount++
+	m.receivedItems = append(m.receivedItems, items)
+	if m.InsertBatchFn != nil {
+		return m.InsertBatchFn(ctx, items)
+	}
+	return nil
+}
+func (m *mockFinalUploader) Close() error { return nil }
+func (m *mockFinalUploader) GetCallCount() int {
+	m.Lock()
+	defer m.Unlock()
+	return m.callCount
+}
+func (m *mockFinalUploader) GetReceivedItems() [][]*ArchivalData {
+	m.Lock()
+	defer m.Unlock()
+	return m.receivedItems
 }
 
-func (m *mockUploader[T]) Close() error {
-	args := m.Called()
-	return args.Error(0)
-}
+// --- Batcher Test Cases (Non-Generic) ---
 
-// ====================================================================================
-// Test Cases for Batcher
-// ====================================================================================
-
-// newTestLogger creates a disabled logger to avoid noisy test output.
-func newTestLogger() zerolog.Logger {
-	return zerolog.New(io.Discard)
-}
-
-func TestBatcher_FlushByBatchSize(t *testing.T) {
-	// Arrange
-	uploader := new(mockUploader[ArchivalData])
+func TestBatcher_BatchSizeTrigger(t *testing.T) {
+	logger := zerolog.Nop()
+	mockUploader := &mockFinalUploader{}
 	config := &BatcherConfig{
 		BatchSize:    3,
-		FlushTimeout: 1 * time.Minute, // Long timeout to ensure size-based flush
-	}
-	logger := newTestLogger()
-
-	// We expect UploadBatch to be called once with a slice of 3 items.
-	// We configure the mock to return `nil` (no error).
-	uploader.On("UploadBatch", mock.Anything, mock.AnythingOfType("[]*icestore.ArchivalData")).Return(nil).Run(func(args mock.Arguments) {
-		// Custom assertion to check the size of the batch passed to UploadBatch.
-		items := args.Get(1).([]*ArchivalData)
-		assert.Len(t, items, 3)
-	})
-
-	batcher := NewBatcher[ArchivalData](config, uploader, logger)
-	batcher.Start()
-	defer batcher.Stop() // Ensure cleanup
-
-	// Act
-	var ackCount, nackCount int
-	var mu sync.Mutex
-	ackFunc := func() { mu.Lock(); ackCount++; mu.Unlock() }
-	nackFunc := func() { mu.Lock(); nackCount++; mu.Unlock() }
-
-	// Send exactly 3 messages to trigger the flush by size.
-	for i := 0; i < 3; i++ {
-		msg := types.ConsumedMessage{Ack: ackFunc, Nack: nackFunc}
-		payload := &ArchivalData{} // Dummy payload
-		batcher.Input() <- &types.BatchedMessage[ArchivalData]{OriginalMessage: msg, Payload: payload}
+		FlushTimeout: 1 * time.Second,
 	}
 
-	// Assert
-	// Allow some time for the batch to be processed.
-	time.Sleep(100 * time.Millisecond)
-	uploader.AssertExpectations(t) // Verify that UploadBatch was called as expected.
-
-	mu.Lock()
-	defer mu.Unlock()
-	assert.Equal(t, 3, ackCount, "Expected 3 messages to be Acked")
-	assert.Equal(t, 0, nackCount, "Expected 0 messages to be Nacked")
-}
-
-func TestBatcher_FlushByTimeout(t *testing.T) {
-	// Arrange
-	uploader := new(mockUploader[ArchivalData])
-	config := &BatcherConfig{
-		BatchSize:    10,                    // Large batch size
-		FlushTimeout: 50 * time.Millisecond, // Short timeout
-	}
-	logger := newTestLogger()
-
-	// Expect UploadBatch to be called with a slice of exactly 2 items due to timeout.
-	uploader.On("UploadBatch", mock.Anything, mock.AnythingOfType("[]*icestore.ArchivalData")).Return(nil).Run(func(args mock.Arguments) {
-		items := args.Get(1).([]*ArchivalData)
-		assert.Len(t, items, 2)
-	})
-
-	batcher := NewBatcher[ArchivalData](config, uploader, logger)
+	batcher := NewBatcher(config, mockUploader, logger)
 	batcher.Start()
 	defer batcher.Stop()
 
-	// Act
-	var ackCount, nackCount int
-	var mu sync.Mutex
-	ackFunc := func() { mu.Lock(); ackCount++; mu.Unlock() }
-	nackFunc := func() { mu.Lock(); nackCount++; mu.Unlock() }
-
-	// Send 2 messages, fewer than the batch size.
-	for i := 0; i < 2; i++ {
-		msg := types.ConsumedMessage{Ack: ackFunc, Nack: nackFunc}
-		payload := &ArchivalData{}
-		batcher.Input() <- &types.BatchedMessage[ArchivalData]{OriginalMessage: msg, Payload: payload}
+	for i := 0; i < 3; i++ {
+		batcher.Input() <- &types.BatchedMessage[ArchivalData]{
+			Payload: &ArchivalData{},
+		}
 	}
 
-	// Assert
-	// Wait for longer than the flush timeout.
-	time.Sleep(100 * time.Millisecond)
-	uploader.AssertExpectations(t)
+	time.Sleep(100 * time.Millisecond) // Allow time for flush
 
-	mu.Lock()
-	defer mu.Unlock()
-	assert.Equal(t, 2, ackCount, "Expected 2 messages to be Acked")
-	assert.Equal(t, 0, nackCount, "Expected 0 messages to be Nacked")
+	assert.Equal(t, 1, mockUploader.GetCallCount(), "UploadBatch should be called once")
+	receivedBatches := mockUploader.GetReceivedItems()
+	require.Len(t, receivedBatches, 1)
+	assert.Len(t, receivedBatches[0], 3, "The batch should contain 3 items")
 }
 
-func TestBatcher_FlushOnStop(t *testing.T) {
-	// Arrange
-	uploader := new(mockUploader[ArchivalData])
+func TestBatcher_FlushTimeoutTrigger(t *testing.T) {
+	logger := zerolog.Nop()
+	mockUploader := &mockFinalUploader{}
 	config := &BatcherConfig{
 		BatchSize:    10,
-		FlushTimeout: 1 * time.Minute,
-	}
-	logger := newTestLogger()
-
-	// Expect UploadBatch to be called on Stop with the pending 2 items.
-	uploader.On("UploadBatch", mock.Anything, mock.AnythingOfType("[]*icestore.ArchivalData")).Return(nil).Run(func(args mock.Arguments) {
-		items := args.Get(1).([]*ArchivalData)
-		assert.Len(t, items, 2)
-	})
-	// Expect Close to be called on the uploader during Stop.
-	uploader.On("Close").Return(nil)
-
-	batcher := NewBatcher[ArchivalData](config, uploader, logger)
-	batcher.Start()
-
-	// Act
-	var ackCount, nackCount int
-	var mu sync.Mutex
-	ackFunc := func() { mu.Lock(); ackCount++; mu.Unlock() }
-	nackFunc := func() { mu.Lock(); nackCount++; mu.Unlock() }
-
-	// Send 2 messages.
-	for i := 0; i < 2; i++ {
-		msg := types.ConsumedMessage{Ack: ackFunc, Nack: nackFunc}
-		payload := &ArchivalData{}
-		batcher.Input() <- &types.BatchedMessage[ArchivalData]{OriginalMessage: msg, Payload: payload}
+		FlushTimeout: 100 * time.Millisecond,
 	}
 
-	// Give a moment for items to enter the channel before stopping.
-	time.Sleep(20 * time.Millisecond)
-	batcher.Stop() // Trigger flush on stop
-
-	// Assert
-	uploader.AssertExpectations(t)
-
-	mu.Lock()
-	defer mu.Unlock()
-	assert.Equal(t, 2, ackCount, "Expected 2 messages to be Acked")
-	assert.Equal(t, 0, nackCount, "Expected 0 messages to be Nacked")
-}
-
-func TestBatcher_NacksOnUploadFailure(t *testing.T) {
-	// Arrange
-	uploader := new(mockUploader[ArchivalData])
-	config := &BatcherConfig{
-		BatchSize:    2,
-		FlushTimeout: 1 * time.Minute,
-	}
-	logger := newTestLogger()
-	uploadError := errors.New("simulated upload failure")
-
-	// Configure the mock uploader to return an error.
-	uploader.On("UploadBatch", mock.Anything, mock.Anything).Return(uploadError)
-
-	batcher := NewBatcher[ArchivalData](config, uploader, logger)
+	batcher := NewBatcher(config, mockUploader, logger)
 	batcher.Start()
 	defer batcher.Stop()
 
-	// Act
-	var ackCount, nackCount int
-	var mu sync.Mutex
-	ackFunc := func() { mu.Lock(); ackCount++; mu.Unlock() }
-	nackFunc := func() { mu.Lock(); nackCount++; mu.Unlock() }
-
-	// Send 2 messages to trigger the flush.
 	for i := 0; i < 2; i++ {
-		msg := types.ConsumedMessage{Ack: ackFunc, Nack: nackFunc}
-		payload := &ArchivalData{}
-		batcher.Input() <- &types.BatchedMessage[ArchivalData]{OriginalMessage: msg, Payload: payload}
+		batcher.Input() <- &types.BatchedMessage[ArchivalData]{
+			Payload: &ArchivalData{},
+		}
 	}
 
-	// Assert
-	time.Sleep(100 * time.Millisecond)
-	uploader.AssertExpectations(t)
+	time.Sleep(150 * time.Millisecond) // Wait for timeout
 
-	mu.Lock()
-	defer mu.Unlock()
-	assert.Equal(t, 0, ackCount, "Expected 0 messages to be Acked on failure")
-	assert.Equal(t, 2, nackCount, "Expected 2 messages to be Nacked on failure")
+	assert.Equal(t, 1, mockUploader.GetCallCount(), "UploadBatch should be called once due to timeout")
+	receivedBatches := mockUploader.GetReceivedItems()
+	require.Len(t, receivedBatches, 1)
+	assert.Len(t, receivedBatches[0], 2, "The batch should contain 2 items")
+}
+
+func TestBatcher_StopFlushesFinalBatch(t *testing.T) {
+	logger := zerolog.Nop()
+	mockUploader := &mockFinalUploader{}
+	config := &BatcherConfig{
+		BatchSize:    10,
+		FlushTimeout: 5 * time.Second,
+	}
+
+	batcher := NewBatcher(config, mockUploader, logger)
+	batcher.Start()
+
+	for i := 0; i < 4; i++ {
+		batcher.Input() <- &types.BatchedMessage[ArchivalData]{
+			Payload: &ArchivalData{},
+		}
+	}
+	time.Sleep(50 * time.Millisecond)
+
+	batcher.Stop() // Should trigger final flush
+
+	assert.Equal(t, 1, mockUploader.GetCallCount(), "UploadBatch should be called on stop")
+	receivedBatches := mockUploader.GetReceivedItems()
+	require.Len(t, receivedBatches, 1)
+	assert.Len(t, receivedBatches[0], 4, "The final batch should contain 4 items")
+}
+
+func TestBatcher_AckNackLogic(t *testing.T) {
+	createMessage := func() (*types.BatchedMessage[ArchivalData], *sync.WaitGroup, *bool, *bool) {
+		var wg sync.WaitGroup
+		wg.Add(1)
+		ackCalled, nackCalled := false, false
+		msg := &types.BatchedMessage[ArchivalData]{
+			Payload: &ArchivalData{},
+			OriginalMessage: types.ConsumedMessage{
+				Ack: func() {
+					ackCalled = true
+					wg.Done()
+				},
+				Nack: func() {
+					nackCalled = true
+					wg.Done()
+				},
+			},
+		}
+		return msg, &wg, &ackCalled, &nackCalled
+	}
+
+	t.Run("acks messages on successful upload", func(t *testing.T) {
+		logger := zerolog.Nop()
+		mockUploader := &mockFinalUploader{
+			InsertBatchFn: func(ctx context.Context, items []*ArchivalData) error {
+				return nil // Success
+			},
+		}
+		config := &BatcherConfig{BatchSize: 1, FlushTimeout: time.Second}
+		batcher := NewBatcher(config, mockUploader, logger)
+		batcher.Start()
+		defer batcher.Stop()
+
+		msg, wg, ack, nack := createMessage()
+		batcher.Input() <- msg
+
+		wg.Wait() // Wait for Ack/Nack to be called
+
+		assert.True(t, *ack, "Should have acked the message")
+		assert.False(t, *nack, "Should not have nacked the message")
+	})
+
+	t.Run("nacks messages on failed upload", func(t *testing.T) {
+		logger := zerolog.Nop()
+		mockUploader := &mockFinalUploader{
+			InsertBatchFn: func(ctx context.Context, items []*ArchivalData) error {
+				return errors.New("gcs upload failed") // Failure
+			},
+		}
+		config := &BatcherConfig{BatchSize: 1, FlushTimeout: time.Second}
+		batcher := NewBatcher(config, mockUploader, logger)
+		batcher.Start()
+		defer batcher.Stop()
+
+		msg, wg, ack, nack := createMessage()
+		batcher.Input() <- msg
+
+		wg.Wait() // Wait for Ack/Nack to be called
+
+		assert.False(t, *ack, "Should not have acked the message")
+		assert.True(t, *nack, "Should have nacked the message")
+	})
 }

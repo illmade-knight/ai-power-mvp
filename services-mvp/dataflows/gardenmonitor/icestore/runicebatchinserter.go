@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bigquery/bqinit"
 	"bigquery/icinit"
 	"cloud.google.com/go/storage"
 	"context"
@@ -13,7 +12,6 @@ import (
 	"time"
 
 	"github.com/illmade-knight/ai-power-mpv/pkg/consumers"
-	"github.com/illmade-knight/ai-power-mpv/pkg/types"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
@@ -49,12 +47,6 @@ func main() {
 	// Create the bucket in the GCS emulator
 	err = gcsClient.Bucket(cfg.IceStore.BucketName).Create(ctx, cfg.ProjectID, nil)
 
-	gcsAdapter := icestore.NewGCSClientAdapter(gcsClient)
-	uploader, err := icestore.NewGCSBatchUploader[types.GardenMonitorMessage](gcsAdapter, icestore.GCSBatchUploaderConfig{
-		BucketName:   cfg.IceStore.BucketName,
-		ObjectPrefix: "archived-data",
-	}, iceLogger)
-
 	// Create the Pub/Sub consumer using the shared consumers package.
 	consumerCfg := &consumers.GooglePubSubConsumerConfig{
 		ProjectID:      cfg.ProjectID,
@@ -65,20 +57,27 @@ func main() {
 		log.Fatal().Err(err).Msg("Failed to create Pub/Sub consumer")
 	}
 
-	// Get the application-specific decoder.
-	decoder := types.NewGardenMonitorDecoder()
-
-	batcher := icestore.NewBatcher[types.GardenMonitorReadings](&icestore.BatcherConfig{
-		BatchSize:    3,
-		FlushTimeout: 5 * time.Second,
-	}, uploader, iceLogger)
+	// REFACTORED: Use the new single constructor for the batch processor.
+	// The generic type is now icestore.ArchivalData.
+	batcher, err := icestore.NewGCSBatchProcessor(
+		icestore.NewGCSClientAdapter(gcsClient),
+		&icestore.BatcherConfig{
+			BatchSize:    3,
+			FlushTimeout: 5 * time.Second,
+		},
+		icestore.GCSBatchUploaderConfig{
+			BucketName:   cfg.IceStore.BucketName,
+			ObjectPrefix: "archived-data",
+		},
+		iceLogger,
+	)
 
 	// Assemble the final service using the new, clean constructor.
-	processingService, err := icestore.NewIceStorageService[types.GardenMonitorReadings](
+	processingService, err := icestore.NewIceStorageService(
 		cfg.BatchProcessing.NumWorkers,
 		consumer,
 		batcher,
-		decoder,
+		icestore.ArchivalTransformer,
 		log.Logger,
 	)
 	if err != nil {
@@ -86,7 +85,7 @@ func main() {
 	}
 
 	// --- 4. Create and Run the Server (Unchanged) ---
-	server := bqinit.NewServer(cfg, processingService, log.Logger)
+	server := icinit.NewServer(cfg, processingService, iceLogger)
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)

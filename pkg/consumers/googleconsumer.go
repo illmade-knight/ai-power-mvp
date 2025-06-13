@@ -109,7 +109,22 @@ func (c *GooglePubSubConsumer) Start(ctx context.Context) error {
 		err := c.subscription.Receive(receiveCtx, func(ctx context.Context, msg *pubsub.Message) {
 			payloadCopy := make([]byte, len(msg.Data))
 			copy(payloadCopy, msg.Data)
-			consumedMsg := types.ConsumedMessage{ID: msg.ID, Payload: payloadCopy, PublishTime: msg.PublishTime, Ack: msg.Ack, Nack: msg.Nack}
+
+			consumedMsg := types.ConsumedMessage{
+				ID:          msg.ID,
+				Payload:     payloadCopy,
+				PublishTime: msg.PublishTime,
+				Ack:         msg.Ack,
+				Nack:        msg.Nack}
+
+			// Enrich message with DeviceInfo from attributes, if present.
+			if uid, ok := msg.Attributes["uid"]; ok {
+				consumedMsg.DeviceInfo = &types.DeviceInfo{
+					UID:      uid,
+					Location: msg.Attributes["location"],
+				}
+			}
+
 			select {
 			case c.outputChan <- consumedMsg:
 			case <-receiveCtx.Done():

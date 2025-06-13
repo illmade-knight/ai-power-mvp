@@ -4,180 +4,122 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
-	"errors"
+	"encoding/json"
 	"io"
 	"strings"
 	"testing"
 
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
-// --- Mock Implementations for Testing ---
+// --- GCSBatchUploader Test Cases ---
 
-type mockGCSWriter struct {
-	buf      *bytes.Buffer
-	closeErr error
-}
-
-func (m *mockGCSWriter) Write(p []byte) (n int, err error) { return m.buf.Write(p) }
-func (m *mockGCSWriter) Close() error                      { return m.closeErr }
-
-type mockGCSObjectHandle struct{ mock.Mock }
-
-func (m *mockGCSObjectHandle) NewWriter(ctx context.Context) GCSWriter {
-	args := m.Called(ctx)
-	return args.Get(0).(GCSWriter)
-}
-
-type mockGCSBucketHandle struct{ mock.Mock }
-
-func (m *mockGCSBucketHandle) Object(name string) GCSObjectHandle {
-	args := m.Called(name)
-	return args.Get(0).(GCSObjectHandle)
-}
-
-type mockGCSClient struct{ mock.Mock }
-
-func (m *mockGCSClient) Bucket(name string) GCSBucketHandle {
-	args := m.Called(name)
-	return args.Get(0).(GCSBucketHandle)
-}
-
-// --- Test-specific Batchable Type ---
-
-// testBatchableItem is a simple struct that implements the Batchable interface for testing.
-type testBatchableItem struct {
-	ID       int    `json:"id"`
-	Data     string `json:"data"`
-	batchKey string
-}
-
-func (i testBatchableItem) GetBatchKey() string {
-	return i.batchKey
-}
-
-// ====================================================================================
-// Test Cases for the Generic GCSBatchUploader
-// ====================================================================================
-
-func TestGCSBatchUploader_UploadBatch_TableDriven(t *testing.T) {
-	testCases := []struct {
-		name                   string
-		batch                  []*testBatchableItem
-		expectedGroup1Contents []string
-		expectedGroup2Contents []string
-		setupMock              func(t *testing.T, mockBucket *mockGCSBucketHandle, writer1, writer2 *mockGCSWriter)
-	}{
-		{
-			name: "Mixed batch with multiple messages for two groups",
-			batch: []*testBatchableItem{
-				{batchKey: "group1", ID: 1},
-				{batchKey: "group2", ID: 2},
-				{batchKey: "group1", ID: 3},
-			},
-			expectedGroup1Contents: []string{`"id":1`, `"id":3`},
-			expectedGroup2Contents: []string{`"id":2`},
-			setupMock: func(t *testing.T, mockBucket *mockGCSBucketHandle, writer1, writer2 *mockGCSWriter) {
-				obj1 := new(mockGCSObjectHandle)
-				obj1.On("NewWriter", mock.Anything).Return(writer1)
-				mockBucket.On("Object", mock.MatchedBy(func(s string) bool { return strings.Contains(s, "group1") })).Return(obj1).Once()
-				obj2 := new(mockGCSObjectHandle)
-				obj2.On("NewWriter", mock.Anything).Return(writer2)
-				mockBucket.On("Object", mock.MatchedBy(func(s string) bool { return strings.Contains(s, "group2") })).Return(obj2).Once()
-			},
-		},
-		{
-			name:  "Empty batch",
-			batch: []*testBatchableItem{},
-			setupMock: func(t *testing.T, mockBucket *mockGCSBucketHandle, writer1, writer2 *mockGCSWriter) {
-				// No calls expected
-			},
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			ctx := context.Background()
-			logger := zerolog.Nop()
-			mockWriter1 := &mockGCSWriter{buf: &bytes.Buffer{}}
-			mockWriter2 := &mockGCSWriter{buf: &bytes.Buffer{}}
-			mockBucket := new(mockGCSBucketHandle)
-			mockClient := new(mockGCSClient)
-			mockClient.On("Bucket", "test-bucket").Return(mockBucket)
-			tc.setupMock(t, mockBucket, mockWriter1, mockWriter2)
-
-			// Instantiate the generic uploader with our test type
-			uploader, err := NewGCSBatchUploader[testBatchableItem](mockClient, GCSBatchUploaderConfig{BucketName: "test-bucket"}, logger)
-			require.NoError(t, err)
-
-			err = uploader.UploadBatch(ctx, tc.batch)
-			require.NoError(t, err)
-
-			mockBucket.AssertExpectations(t)
-			if len(tc.expectedGroup1Contents) > 0 {
-				for _, content := range tc.expectedGroup1Contents {
-					assertCompressedJSONContains(t, mockWriter1.buf, content)
-				}
-			} else {
-				assert.Zero(t, mockWriter1.buf.Len())
-			}
-			if len(tc.expectedGroup2Contents) > 0 {
-				for _, content := range tc.expectedGroup2Contents {
-					assertCompressedJSONContains(t, mockWriter2.buf, content)
-				}
-			} else {
-				assert.Zero(t, mockWriter2.buf.Len())
-			}
-		})
-	}
-}
-
-func TestGCSBatchUploader_WriterCloseError(t *testing.T) {
-	ctx := context.Background()
+func TestGCSBatchUploader_UploadBatch_SingleGroup(t *testing.T) {
+	// Arrange
 	logger := zerolog.Nop()
-	closeErr := errors.New("gcs writer close failure")
-	mockWriter := &mockGCSWriter{buf: &bytes.Buffer{}, closeErr: closeErr}
-	mockObject := new(mockGCSObjectHandle)
-	mockObject.On("NewWriter", ctx).Return(mockWriter)
-	mockBucket := new(mockGCSBucketHandle)
-	mockBucket.On("Object", mock.Anything).Return(mockObject)
-	mockClient := new(mockGCSClient)
-	mockClient.On("Bucket", "test-bucket").Return(mockBucket)
-
-	uploader, err := NewGCSBatchUploader[testBatchableItem](mockClient, GCSBatchUploaderConfig{BucketName: "test-bucket"}, logger)
+	mockClient := newMockGCSClient()
+	config := GCSBatchUploaderConfig{
+		BucketName:   "test-bucket",
+		ObjectPrefix: "uploads",
+	}
+	uploader, err := NewGCSBatchUploader(mockClient, config, logger)
 	require.NoError(t, err)
 
-	batch := []*testBatchableItem{{batchKey: "group1", ID: 1}}
-	err = uploader.UploadBatch(ctx, batch)
+	batch := []*ArchivalData{
+		{ID: "msg-1", BatchKey: "2025/06/13/loc-a", OriginalPubSubPayload: []byte(`{"data":"one"}`)},
+		{ID: "msg-2", BatchKey: "2025/06/13/loc-a", OriginalPubSubPayload: []byte(`{"data":"two"}`)},
+	}
 
-	assert.Error(t, err)
-	assert.True(t, errors.Is(err, closeErr))
+	// Act
+	err = uploader.UploadBatch(context.Background(), batch)
+	require.NoError(t, err)
+
+	// Assert
+	mockClient.bucket.Lock()
+	defer mockClient.bucket.Unlock()
+	// Should create one object because both items have the same BatchKey.
+	assert.Len(t, mockClient.bucket.objects, 1, "Expected one object to be created")
+
+	for objectName, handle := range mockClient.bucket.objects {
+		assert.Contains(t, objectName, "uploads/2025/06/13/loc-a/", "Object path is incorrect")
+
+		// Decompress and verify content
+		gzReader, err := gzip.NewReader(&handle.writer.buf)
+		require.NoError(t, err)
+		content, err := io.ReadAll(gzReader)
+		require.NoError(t, err)
+
+		// Content should be two lines of JSON (JSONL format)
+		lines := bytes.Split(bytes.TrimSpace(content), []byte("\n"))
+		require.Len(t, lines, 2, "Expected two JSON records in the file")
+
+		var record1, record2 ArchivalData
+		err = json.Unmarshal(lines[0], &record1)
+		require.NoError(t, err)
+		err = json.Unmarshal(lines[1], &record2)
+		require.NoError(t, err)
+
+		assert.Equal(t, "msg-1", record1.ID)
+		assert.Equal(t, "msg-2", record2.ID)
+	}
 }
 
-// --- Test Helper Functions ---
+func TestGCSBatchUploader_UploadBatch_MultipleGroups(t *testing.T) {
+	// Arrange
+	logger := zerolog.Nop()
+	mockClient := newMockGCSClient()
+	config := GCSBatchUploaderConfig{
+		BucketName:   "test-bucket",
+		ObjectPrefix: "uploads",
+	}
+	uploader, err := NewGCSBatchUploader(mockClient, config, logger)
+	require.NoError(t, err)
 
-func getDecompressedString(t *testing.T, buf *bytes.Buffer) string {
-	t.Helper()
-	if buf.Len() == 0 {
-		return ""
+	batch := []*ArchivalData{
+		{ID: "msg-a1", BatchKey: "2025/06/14/loc-a"},
+		{ID: "msg-b1", BatchKey: "2025/06/14/loc-b"},
+		{ID: "msg-a2", BatchKey: "2025/06/14/loc-a"},
 	}
-	gzReader, err := gzip.NewReader(bytes.NewReader(buf.Bytes()))
-	if err != nil {
-		t.Fatalf("Failed to create gzip reader: %v", err)
+
+	// Act
+	err = uploader.UploadBatch(context.Background(), batch)
+	require.NoError(t, err)
+
+	// Assert
+	mockClient.bucket.Lock()
+	defer mockClient.bucket.Unlock()
+	// Should create two objects because there are two unique BatchKeys.
+	assert.Len(t, mockClient.bucket.objects, 2, "Expected two objects to be created for two unique batch keys")
+
+	foundA, foundB := false, false
+	for objectName := range mockClient.bucket.objects {
+		if strings.Contains(objectName, "loc-a") {
+			foundA = true
+		}
+		if strings.Contains(objectName, "loc-b") {
+			foundB = true
+		}
 	}
-	defer gzReader.Close()
-	decompressed, err := io.ReadAll(gzReader)
-	if err != nil {
-		t.Fatalf("Failed to decompress data: %v", err)
-	}
-	return string(decompressed)
+	assert.True(t, foundA, "Object for loc-a was not created")
+	assert.True(t, foundB, "Object for loc-b was not created")
 }
 
-func assertCompressedJSONContains(t *testing.T, buf *bytes.Buffer, expectedSubstring string) {
-	t.Helper()
-	decompressedContent := getDecompressedString(t, buf)
-	assert.Contains(t, decompressedContent, expectedSubstring)
+func TestGCSBatchUploader_EmptyBatch(t *testing.T) {
+	logger := zerolog.Nop()
+	mockClient := newMockGCSClient()
+	config := GCSBatchUploaderConfig{
+		BucketName:   "test-bucket",
+		ObjectPrefix: "uploads",
+	}
+	uploader, err := NewGCSBatchUploader(mockClient, config, logger)
+	require.NoError(t, err)
+
+	// Act
+	err = uploader.UploadBatch(context.Background(), []*ArchivalData{})
+	require.NoError(t, err)
+
+	// Assert
+	assert.Len(t, mockClient.bucket.objects, 0, "Should not create any objects for an empty batch")
 }

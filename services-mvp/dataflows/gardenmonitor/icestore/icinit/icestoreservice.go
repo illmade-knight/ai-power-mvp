@@ -3,12 +3,12 @@ package icinit
 import (
 	"context"
 	"fmt"
+	"github.com/illmade-knight/ai-power-mpv/pkg/icestore"
 	"net/http"
 	"time"
 
 	// Import the new generic consumers package
 	"github.com/illmade-knight/ai-power-mpv/pkg/consumers"
-	"github.com/illmade-knight/ai-power-mpv/pkg/types"
 	"github.com/rs/zerolog"
 )
 
@@ -19,13 +19,13 @@ type Server struct {
 	logger zerolog.Logger
 	config *Config
 	// The server now holds a pointer to the generic ProcessingService.
-	batchProcessing *consumers.ProcessingService[types.GardenMonitorReadings]
+	batchProcessing *consumers.ProcessingService[icestore.ArchivalData]
 	httpServer      *http.Server
 }
 
 // NewServer creates and configures a new Server instance.
 // Its signature is updated to accept the generic service type.
-func NewServer(cfg *Config, b *consumers.ProcessingService[types.GardenMonitorReadings], logger zerolog.Logger) *Server {
+func NewServer(cfg *Config, b *consumers.ProcessingService[icestore.ArchivalData], logger zerolog.Logger) *Server {
 	return &Server{
 		logger:          logger,
 		config:          cfg,

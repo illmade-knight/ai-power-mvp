@@ -12,9 +12,9 @@ import (
 
 // DataUploader is a generic interface for uploading a batch of processed items.
 // It is the `icestore` equivalent of the `bqstore.DataBatchInserter` interface.
-type DataUploader[T any] interface {
+type DataUploader interface {
 	// UploadBatch uploads a batch of items of type T.
-	UploadBatch(ctx context.Context, items []*T) error
+	UploadBatch(ctx context.Context, items []*ArchivalData) error
 	// Close performs any necessary cleanup, such as waiting for pending uploads.
 	Close() error
 }
@@ -27,6 +27,8 @@ type ArchivalData struct {
 	// The `json:"-"` tag prevents it from being serialized into the output file itself.
 	BatchKey string `json:"-"`
 
+	ID string `json:"id"`
+
 	// OriginalPubSubPayload stores the complete, raw payload of the source message
 	// as valid JSON. This ensures a full audit trail.
 	OriginalPubSubPayload json.RawMessage `json:"original_pubsub_payload"`
@@ -36,6 +38,6 @@ type ArchivalData struct {
 }
 
 // GetBatchKey allows ArchivalData to satisfy the Batchable interface.
-func (a *ArchivalData) GetBatchKey() string {
+func (a ArchivalData) GetBatchKey() string {
 	return a.BatchKey
 }
