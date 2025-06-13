@@ -144,15 +144,26 @@ func TestE2E_MqttToBigQueryFlow(t *testing.T) {
 			CredentialsFile string `mapstructure:"credentials_file"`
 		}{SubscriptionID: testPubSubSubscriptionID},
 		BigQuery: struct {
-			DatasetID       string `mapstructure:"dataset_id"`
-			TableID         string `mapstructure:"table_id"`
+			bqstore.BigQueryDatasetConfig
 			CredentialsFile string `mapstructure:"credentials_file"`
-		}{DatasetID: e2eBigQueryDatasetID, TableID: e2eBigQueryTableID},
+		}{
+			BigQueryDatasetConfig: bqstore.BigQueryDatasetConfig{
+				ProjectID: testProjectID,
+				DatasetID: e2eBigQueryDatasetID,
+				TableID:   e2eBigQueryTableID,
+			},
+			CredentialsFile: "",
+		},
 		BatchProcessing: struct {
-			NumWorkers   int           `mapstructure:"num_workers"`
-			BatchSize    int           `mapstructure:"batch_size"`
-			FlushTimeout time.Duration `mapstructure:"flush_timeout"`
-		}{NumWorkers: 2, BatchSize: 5, FlushTimeout: 3 * time.Second},
+			bqstore.BatchInserterConfig `mapstructure:"datasetup"`
+			NumWorkers                  int `mapstructure:"num_workers"`
+		}{
+			BatchInserterConfig: bqstore.BatchInserterConfig{
+				BatchSize:    5,
+				FlushTimeout: 10 * time.Second,
+			},
+			NumWorkers: 2,
+		},
 	}
 
 	bqLogger := log.With().Str("service", "bq-processor").Logger()
@@ -165,27 +176,12 @@ func TestE2E_MqttToBigQueryFlow(t *testing.T) {
 	}, bqLogger)
 	require.NoError(t, err)
 
-	// Create the bqstore-specific components.
-	bqInserter, err := bqstore.NewBigQueryInserter[types.GardenMonitorPayload](ctx, bqClient, &bqstore.BigQueryInserterConfig{
-		ProjectID: bqCfg.ProjectID,
-		DatasetID: bqCfg.BigQuery.DatasetID,
-		TableID:   bqCfg.BigQuery.TableID,
-	}, bqLogger)
+	// *** REFACTORED PART: Use the new, single convenience constructor ***
+	batchInserter, err := bqstore.NewBigQueryBatchProcessor[types.GardenMonitorReadings](ctx, bqClient, &bqCfg.BatchProcessing.BatchInserterConfig, &bqCfg.BigQuery.BigQueryDatasetConfig, bqLogger)
 	require.NoError(t, err)
 
-	batcher := bqstore.NewBatchInserter[types.GardenMonitorPayload](&bqstore.BatchInserterConfig{
-		BatchSize:    bqCfg.BatchProcessing.BatchSize,
-		FlushTimeout: bqCfg.BatchProcessing.FlushTimeout,
-	}, bqInserter, bqLogger)
-
-	// Use the new, cleaner constructor for the BigQuery service.
-	processingService, err := bqstore.NewBigQueryService[types.GardenMonitorPayload](
-		bqCfg.BatchProcessing.NumWorkers,
-		bqConsumer,
-		batcher,
-		types.NewGardenMonitorDecoder(),
-		bqLogger,
-	)
+	// *** REFACTORED PART: Use the new service constructor ***
+	processingService, err := bqstore.NewBigQueryService[types.GardenMonitorReadings](bqCfg.BatchProcessing.NumWorkers, bqConsumer, batchInserter, types.ConsumedMessageTransformer, bqLogger)
 	require.NoError(t, err)
 
 	bqServer := bqinit.NewServer(bqCfg, processingService, bqLogger)
@@ -205,7 +201,7 @@ func TestE2E_MqttToBigQueryFlow(t *testing.T) {
 	defer mqttTestPublisher.Disconnect(250)
 
 	const messageCount = 1
-	testPayload := types.GardenMonitorPayload{
+	testPayload := types.GardenMonitorReadings{
 		DE:       testMqttDeviceUID,
 		Sequence: 123,
 		Battery:  98,
@@ -219,7 +215,7 @@ func TestE2E_MqttToBigQueryFlow(t *testing.T) {
 	log.Info().Msg("E2E: Published test message to MQTT.")
 
 	// --- 5. Verify Data in BigQuery using the correct polling method ---
-	var receivedRows []types.GardenMonitorPayload
+	var receivedRows []types.GardenMonitorReadings
 	var lastQueryErr error
 	timeout := time.After(30 * time.Second)
 	tick := time.NewTicker(5 * time.Second)
@@ -241,9 +237,9 @@ VerificationLoop:
 				continue // Try again on the next tick
 			}
 
-			var currentRows []types.GardenMonitorPayload
+			var currentRows []types.GardenMonitorReadings
 			for {
-				var row types.GardenMonitorPayload
+				var row types.GardenMonitorReadings
 				err := it.Next(&row)
 				if errors.Is(err, iterator.Done) {
 					break
@@ -369,7 +365,7 @@ func setupBigQueryEmulator(t *testing.T, ctx context.Context) (cleanupFunc func(
 	}
 
 	table := adminClient.Dataset(e2eBigQueryDatasetID).Table(e2eBigQueryTableID)
-	schema, err := bigquery.InferSchema(types.GardenMonitorPayload{})
+	schema, err := bigquery.InferSchema(types.GardenMonitorReadings{})
 	require.NoError(t, err)
 	err = table.Create(ctx, &bigquery.TableMetadata{Name: e2eBigQueryTableID, Schema: schema})
 	if err != nil && !strings.Contains(err.Error(), "Already Exists") {

@@ -34,3 +34,8 @@ type ArchivalData struct {
 	// ArchivedAt is a timestamp indicating when the message was processed by this service.
 	ArchivedAt time.Time `json:"archived_at"`
 }
+
+// GetBatchKey allows ArchivalData to satisfy the Batchable interface.
+func (a *ArchivalData) GetBatchKey() string {
+	return a.BatchKey
+}

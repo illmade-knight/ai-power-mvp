@@ -211,7 +211,10 @@ func TestIceStorageService_Integration(t *testing.T) {
 func setupPubSubEmulator(t *testing.T, ctx context.Context) (string, func()) {
 	t.Helper()
 	req := testcontainers.ContainerRequest{Image: "gcr.io/google.com/cloudsdktool/cloud-sdk:emulators", ExposedPorts: []string{"8085/tcp"}, Cmd: []string{"gcloud", "beta", "emulators", "pubsub", "start", fmt.Sprintf("--project=%s", testProjectID), "--host-port=0.0.0.0:8085"}, WaitingFor: wait.ForLog("INFO: Server started, listening on")}
-	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{ContainerRequest: req, Started: true})
+	container, err := testcontainers.GenericContainer(
+		ctx,
+		testcontainers.GenericContainerRequest{ContainerRequest: req, Started: true},
+	)
 	require.NoError(t, err)
 	host, err := container.Host(ctx)
 	require.NoError(t, err)
@@ -231,18 +234,29 @@ func setupPubSubEmulator(t *testing.T, ctx context.Context) (string, func()) {
 
 func setupGCSEmulator(t *testing.T, ctx context.Context) func() {
 	t.Helper()
+
 	req := testcontainers.ContainerRequest{
 		Image:        "fsouza/fake-gcs-server:latest",
 		ExposedPorts: []string{"4443/tcp"},
 		Cmd:          []string{"-scheme", "http"},
-		WaitingFor:   wait.ForLog("starting server"),
+		// API CHANGE: Changed .WithStatusCode(200) to .WithExpectedStatusCode(200) for the newer API.
+		WaitingFor: wait.ForHTTP("/health").WithPort("4443/tcp").WithExpectedStatusCode(200).WithStartupTimeout(60 * time.Second),
 	}
-	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{ContainerRequest: req, Started: true})
+
+	// API CHANGE: The LogConsumer is removed. The default logger is used.
+	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+		ContainerRequest: req,
+		Started:          true,
+	})
 	require.NoError(t, err)
+
 	endpoint, err := container.Endpoint(ctx, "")
 	require.NoError(t, err)
 	t.Setenv("STORAGE_EMULATOR_HOST", endpoint)
-	return func() { require.NoError(t, container.Terminate(ctx)) }
+
+	return func() {
+		require.NoError(t, container.Terminate(ctx))
+	}
 }
 
 func listGCSObjects(ctx context.Context, bucket *storage.BucketHandle) (map[string][]byte, error) {

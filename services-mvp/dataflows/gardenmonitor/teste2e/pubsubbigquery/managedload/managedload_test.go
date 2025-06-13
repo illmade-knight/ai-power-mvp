@@ -103,7 +103,7 @@ func buildTestServicesDefinition(runID, gcpProjectID string) *servicemanager.Top
 					Dataset:                datasetID,
 					AccessingServices:      []string{"analysis-service"},
 					SchemaSourceType:       "go_struct",
-					SchemaSourceIdentifier: "github.com/illmade-knight/ai-power-mpv/pkg/types.GardenMonitorPayload",
+					SchemaSourceIdentifier: "github.com/illmade-knight/ai-power-mpv/pkg/types.GardenMonitorReadings",
 				},
 			},
 		},
@@ -144,7 +144,7 @@ func TestManagedCloudLoad(t *testing.T) {
 	require.NoError(t, err)
 
 	schemaRegistry := make(map[string]interface{})
-	schemaRegistry["github.com/illmade-knight/ai-power-mpv/pkg/types.GardenMonitorPayload"] = types.GardenMonitorPayload{}
+	schemaRegistry["github.com/illmade-knight/ai-power-mpv/pkg/types.GardenMonitorReadings"] = types.GardenMonitorReadings{}
 
 	// --- 3. Use ServiceManager to Provision Infrastructure ---
 	log.Info().Str("runID", runID).Msg("Initializing ServiceManager to provision dataflow...")
@@ -339,24 +339,37 @@ func startIngestionService(t *testing.T, ctx context.Context, projectID, mqttBro
 	return service, server
 }
 
-func startBQProcessingService(t *testing.T, ctx context.Context, gcpProjectID, subID, datasetID, tableID string) (*consumers.ProcessingService[types.GardenMonitorPayload], *bqinit.Server) {
+func startBQProcessingService(t *testing.T, ctx context.Context, gcpProjectID, subID, datasetID, tableID string) (*consumers.ProcessingService[types.GardenMonitorReadings], *bqinit.Server) {
 	t.Helper()
 	bqCfg := &bqinit.Config{
-		LogLevel: "info", HTTPPort: cloudTestBqHTTPPort, ProjectID: gcpProjectID,
+		LogLevel:  "info",
+		HTTPPort:  cloudTestBqHTTPPort,
+		ProjectID: gcpProjectID,
 		Consumer: struct {
 			SubscriptionID  string `mapstructure:"subscription_id"`
 			CredentialsFile string `mapstructure:"credentials_file"`
 		}{SubscriptionID: subID},
 		BigQuery: struct {
-			DatasetID       string `mapstructure:"dataset_id"`
-			TableID         string `mapstructure:"table_id"`
+			bqstore.BigQueryDatasetConfig
 			CredentialsFile string `mapstructure:"credentials_file"`
-		}{DatasetID: datasetID, TableID: tableID},
+		}{
+			BigQueryDatasetConfig: bqstore.BigQueryDatasetConfig{
+				ProjectID: gcpProjectID,
+				DatasetID: datasetID,
+				TableID:   tableID,
+			},
+			CredentialsFile: "",
+		},
 		BatchProcessing: struct {
-			NumWorkers   int           `mapstructure:"num_workers"`
-			BatchSize    int           `mapstructure:"batch_size"`
-			FlushTimeout time.Duration `mapstructure:"flush_timeout"`
-		}{NumWorkers: 10, BatchSize: 200, FlushTimeout: 10 * time.Second},
+			bqstore.BatchInserterConfig `mapstructure:"datasetup"`
+			NumWorkers                  int `mapstructure:"num_workers"`
+		}{
+			BatchInserterConfig: bqstore.BatchInserterConfig{
+				BatchSize:    5,
+				FlushTimeout: 10 * time.Second,
+			},
+			NumWorkers: 2,
+		},
 	}
 	bqLogger := log.With().Str("service", "bq-processor").Logger()
 	bqClient, err := bigquery.NewClient(ctx, gcpProjectID)
@@ -368,27 +381,12 @@ func startBQProcessingService(t *testing.T, ctx context.Context, gcpProjectID, s
 	}, bqLogger)
 	require.NoError(t, err)
 
-	// Create the bqstore-specific components.
-	bqInserter, err := bqstore.NewBigQueryInserter[types.GardenMonitorPayload](ctx, bqClient, &bqstore.BigQueryInserterConfig{
-		ProjectID: bqCfg.ProjectID,
-		DatasetID: bqCfg.BigQuery.DatasetID,
-		TableID:   bqCfg.BigQuery.TableID,
-	}, bqLogger)
+	// *** REFACTORED PART: Use the new, single convenience constructor ***
+	batchInserter, err := bqstore.NewBigQueryBatchProcessor[types.GardenMonitorReadings](ctx, bqClient, &bqCfg.BatchProcessing.BatchInserterConfig, &bqCfg.BigQuery.BigQueryDatasetConfig, bqLogger)
 	require.NoError(t, err)
 
-	batcher := bqstore.NewBatchInserter[types.GardenMonitorPayload](&bqstore.BatchInserterConfig{
-		BatchSize:    bqCfg.BatchProcessing.BatchSize,
-		FlushTimeout: bqCfg.BatchProcessing.FlushTimeout,
-	}, bqInserter, bqLogger)
-
-	// Use the new, cleaner constructor for the BigQuery service.
-	processingService, err := bqstore.NewBigQueryService[types.GardenMonitorPayload](
-		bqCfg.BatchProcessing.NumWorkers,
-		bqConsumer,
-		batcher,
-		types.NewGardenMonitorDecoder(),
-		bqLogger,
-	)
+	// *** REFACTORED PART: Use the new service constructor ***
+	processingService, err := bqstore.NewBigQueryService[types.GardenMonitorReadings](bqCfg.BatchProcessing.NumWorkers, bqConsumer, batchInserter, types.ConsumedMessageTransformer, bqLogger)
 	require.NoError(t, err)
 
 	bqServer := bqinit.NewServer(bqCfg, processingService, bqLogger)

@@ -41,8 +41,8 @@ type BatchInserter[T any] struct {
 	shutdownFunc context.CancelFunc
 }
 
-// NewBatchInserter creates a new generic BatchInserter for a given type T.
-func NewBatchInserter[T any](
+// NewBatcher creates a new generic BatchInserter for a given type T.
+func NewBatcher[T any](
 	config *BatchInserterConfig,
 	inserter DataBatchInserter[T],
 	logger zerolog.Logger,

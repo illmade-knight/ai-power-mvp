@@ -14,13 +14,13 @@ import (
 // MessageConsumer and handing them off to any MessageProcessor.
 // ====================================================================================
 
-// ProcessingService orchestrates the pipeline of consuming, decoding, and processing messages.
+// ProcessingService orchestrates the pipeline of consuming, transforming, and processing messages.
 // It is generic and can be used with any combination of consumers and processors.
 type ProcessingService[T any] struct {
 	numWorkers   int
 	consumer     MessageConsumer
-	processor    MessageProcessor[T] // Depends on the new generic interface
-	decoder      PayloadDecoder[T]
+	processor    MessageProcessor[T]
+	transformer  MessageTransformer[T] // <-- REPLACED: Was previously 'decoder PayloadDecoder[T]'
 	logger       zerolog.Logger
 	wg           sync.WaitGroup
 	shutdownCtx  context.Context
@@ -28,13 +28,13 @@ type ProcessingService[T any] struct {
 }
 
 // NewProcessingService creates a new, generic ProcessingService.
-// It requires a consumer to get messages, a decoder to transform them, and a processor
-// to handle the transformed data.
+// It requires a consumer to get messages, a transformer to give them structure, and a
+// processor to handle the structured data.
 func NewProcessingService[T any](
 	numWorkers int,
 	consumer MessageConsumer,
 	processor MessageProcessor[T],
-	decoder PayloadDecoder[T],
+	transformer MessageTransformer[T], // <-- REPLACED: This now accepts the new, more powerful interface.
 	logger zerolog.Logger,
 ) (*ProcessingService[T], error) {
 	// In a production library, you would add nil checks for the parameters here.
@@ -48,7 +48,7 @@ func NewProcessingService[T any](
 		numWorkers:   numWorkers,
 		consumer:     consumer,
 		processor:    processor,
-		decoder:      decoder,
+		transformer:  transformer, // <-- Use the new transformer
 		logger:       logger.With().Str("service", "ProcessingService").Logger(),
 		shutdownCtx:  shutdownCtx,
 		shutdownFunc: shutdownFunc,
@@ -103,26 +103,30 @@ func (s *ProcessingService[T]) worker(workerID int) {
 }
 
 // processConsumedMessage contains the core logic for each worker.
-// It decodes a message and, upon success, sends it to the processor.
+// REFACTORED: It now uses the MessageTransformer on the whole ConsumedMessage.
 func (s *ProcessingService[T]) processConsumedMessage(msg types.ConsumedMessage, workerID int) {
-	s.logger.Debug().Int("worker_id", workerID).Str("msg_id", msg.ID).Msg("Processing message")
+	s.logger.Debug().Int("worker_id", workerID).Str("msg_id", msg.ID).Msg("Transforming message")
 
-	decodedPayload, err := s.decoder(msg.Payload)
+	// Use the new transformer, which operates on the whole message, not just the payload.
+	transformedPayload, skip, err := s.transformer(msg)
 	if err != nil {
-		s.logger.Error().Err(err).Str("msg_id", msg.ID).Msg("Failed to decode payload, Nacking message.")
+		s.logger.Error().Err(err).Str("msg_id", msg.ID).Msg("Failed to transform message, Nacking.")
 		msg.Nack()
 		return
 	}
 
-	if decodedPayload == nil {
-		s.logger.Warn().Str("msg_id", msg.ID).Msg("Decoder returned nil payload, Acking and skipping.")
+	// The transformer can signal to skip a message (e.g., for filtering or invalid data).
+	if skip {
+		s.logger.Debug().Str("msg_id", msg.ID).Msg("Transformer signaled to skip message, Acking.")
 		msg.Ack()
 		return
 	}
 
+	// The `types.BatchedMessage` wrapper links the original message (for Ack/Nack)
+	// with the successfully transformed payload.
 	batchedMsg := &types.BatchedMessage[T]{
-		OriginalMessage: msg,
-		Payload:         decodedPayload,
+		OriginalMessage: msg, // Note: The type of this field should be consumers.ConsumedMessage
+		Payload:         transformedPayload,
 	}
 
 	select {
@@ -141,9 +145,11 @@ func (s *ProcessingService[T]) Stop() {
 	// 1. Signal all workers and the consumer to begin shutting down.
 	s.shutdownFunc()
 
-	// 2. Wait for the consumer to fully stop.
+	// 2. Wait for the consumer to fully stop. This ensures no new messages are processed.
 	s.logger.Info().Msg("Waiting for message consumer to stop...")
-	<-s.consumer.Done()
+	if s.consumer != nil {
+		<-s.consumer.Done()
+	}
 	s.logger.Info().Msg("Message consumer stopped.")
 
 	// 3. Wait for all processing workers to finish their current tasks.
@@ -152,7 +158,9 @@ func (s *ProcessingService[T]) Stop() {
 	s.logger.Info().Msg("All processing workers completed.")
 
 	// 4. Stop the processor. This will flush any remaining buffered items.
-	s.processor.Stop()
+	if s.processor != nil {
+		s.processor.Stop()
+	}
 
 	s.logger.Info().Msg("Generic ProcessingService stopped gracefully.")
 }

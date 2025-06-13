@@ -45,7 +45,7 @@ func LoadBigQueryInserterConfigFromEnv() (*BigQueryInserterConfig, error) {
 // It now accepts a BigQueryInserterConfig struct.
 func NewProductionBigQueryClient(ctx context.Context, cfg *BigQueryInserterConfig, logger zerolog.Logger) (*bigquery.Client, error) {
 	if cfg == nil {
-		return nil, fmt.Errorf("BigQueryInserterConfig cannot be nil for NewProductionBigQueryClient")
+		return nil, fmt.Errorf("BigQueryDatasetConfig cannot be nil for NewProductionBigQueryClient")
 	}
 	if cfg.ProjectID == "" {
 		return nil, fmt.Errorf("cfg.ProjectID is required for NewProductionBigQueryClient")
@@ -91,10 +91,10 @@ func NewBigQueryInserter(
 		return nil, fmt.Errorf("bigquery client cannot be nil")
 	}
 	if cfg == nil {
-		return nil, fmt.Errorf("BigQueryInserterConfig cannot be nil")
+		return nil, fmt.Errorf("BigQueryDatasetConfig cannot be nil")
 	}
 	if cfg.DatasetID == "" || cfg.TableID == "" {
-		return nil, fmt.Errorf("DatasetID and TableID must be provided in BigQueryInserterConfig")
+		return nil, fmt.Errorf("DatasetID and TableID must be provided in BigQueryDatasetConfig")
 	}
 
 	projectID := client.Project() // Get project MessageID from the injected client

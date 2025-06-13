@@ -1,6 +1,7 @@
 package bqinit
 
 import (
+	"github.com/illmade-knight/ai-power-mpv/pkg/bqstore"
 	"github.com/rs/zerolog/log"
 	"os"
 	"strings"
@@ -30,16 +31,14 @@ type Config struct {
 
 	// BigQuery holds settings for the BigQuery inserter.
 	BigQuery struct {
-		DatasetID       string `mapstructure:"dataset_id"`
-		TableID         string `mapstructure:"table_id"`
+		bqstore.BigQueryDatasetConfig
 		CredentialsFile string `mapstructure:"credentials_file"`
 	} `mapstructure:"bigquery"`
 
 	// BatchProcessing holds settings for the processing and batchProcessing logic.
 	BatchProcessing struct {
-		NumWorkers   int           `mapstructure:"num_workers"`
-		BatchSize    int           `mapstructure:"batch_size"`
-		FlushTimeout time.Duration `mapstructure:"flush_timeout"`
+		bqstore.BatchInserterConfig `mapstructure:"datasetup"`
+		NumWorkers                  int `mapstructure:"num_workers"`
 	} `mapstructure:"batchProcessing"`
 }
 

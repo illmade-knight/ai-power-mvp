@@ -1,7 +1,7 @@
 package icinit_test
 
 import (
-	"bigquery/bqinit"
+	"bigquery/icinit"
 	"context"
 	"net/http"
 	"net/http/httptest"
@@ -30,22 +30,22 @@ func TestServerStartup(t *testing.T) {
 	logger := zerolog.Nop()
 
 	// Config can be empty for this test as we aren't using the port from it.
-	cfg := &bqinit.Config{}
+	cfg := &icinit.Config{}
 
 	// Create mocks for the service dependencies.
 	// Correctly instantiate the mock consumer using its constructor.
 	mockConsumer := consumers.NewMockMessageConsumer(1) // Assumes this is defined in a shared test helper file
-	mockInserter := &MockInserter[types.GardenMonitorPayload]{}
-	mockDecoder := func(payload []byte) (*types.GardenMonitorPayload, error) { return nil, nil }
+	mockInserter := &MockInserter[types.GardenMonitorReadings]{}
+	mockDecoder := func(payload []byte) (*types.GardenMonitorReadings, error) { return nil, nil }
 
-	batcher := bqstore.NewBatchInserter[types.GardenMonitorPayload](
+	batcher := bqstore.NewBatcher[types.GardenMonitorReadings](
 		&bqstore.BatchInserterConfig{BatchSize: 1, FlushTimeout: 1 * time.Second},
 		mockInserter,
 		logger,
 	)
 
 	// Use the new, clean constructor to create the processing service.
-	processingService, err := bqstore.NewBigQueryService[types.GardenMonitorPayload](
+	processingService, err := bqstore.NewBigQueryService[types.GardenMonitorReadings](
 		1, // numWorkers
 		mockConsumer,
 		batcher,
@@ -54,7 +54,7 @@ func TestServerStartup(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	server := bqinit.NewServer(cfg, processingService, logger)
+	server := icinit.NewServer(cfg, processingService, logger)
 
 	// Start the non-HTTP parts of the service in a goroutine.
 	go func() {

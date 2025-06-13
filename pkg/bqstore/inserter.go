@@ -10,10 +10,10 @@ import (
 	"strings"
 )
 
-// BigQueryInserterConfig holds configuration for the BigQuery inserter.
+// BigQueryDatasetConfig holds configuration for the BigQuery inserter.
 // This struct remains specific, but it's now used by the generic BigQueryInserter.
 // For a true library, environment variable names could also be made configurable.
-type BigQueryInserterConfig struct {
+type BigQueryDatasetConfig struct {
 	ProjectID       string
 	DatasetID       string
 	TableID         string
@@ -22,8 +22,8 @@ type BigQueryInserterConfig struct {
 
 // LoadBigQueryInserterConfigFromEnv loads BigQuery configuration from environment variables.
 // This helper can be adapted or replaced depending on the application's config strategy.
-func LoadBigQueryInserterConfigFromEnv() (*BigQueryInserterConfig, error) {
-	cfg := &BigQueryInserterConfig{
+func LoadBigQueryInserterConfigFromEnv() (*BigQueryDatasetConfig, error) {
+	cfg := &BigQueryDatasetConfig{
 		ProjectID:       os.Getenv("GCP_PROJECT_ID"),
 		DatasetID:       os.Getenv("BQ_DATASET_ID"),
 		TableID:         os.Getenv("BQ_TABLE_ID"), // Generic name
@@ -44,7 +44,7 @@ func LoadBigQueryInserterConfigFromEnv() (*BigQueryInserterConfig, error) {
 
 // NewProductionBigQueryClient creates a BigQuery client suitable for production.
 // This function is a general utility and does not need to be generic.
-func NewProductionBigQueryClient(ctx context.Context, cfg *BigQueryInserterConfig, logger zerolog.Logger) (*bigquery.Client, error) {
+func NewProductionBigQueryClient(ctx context.Context, cfg *BigQueryDatasetConfig, logger zerolog.Logger) (*bigquery.Client, error) {
 	// ... (Implementation from original file is good, no changes needed)
 	var opts []option.ClientOption
 	if cfg.CredentialsFile != "" {
@@ -81,14 +81,14 @@ type BigQueryInserter[T any] struct {
 func NewBigQueryInserter[T any](
 	ctx context.Context,
 	client *bigquery.Client,
-	cfg *BigQueryInserterConfig,
+	cfg *BigQueryDatasetConfig,
 	logger zerolog.Logger,
 ) (*BigQueryInserter[T], error) {
 	if client == nil {
 		return nil, fmt.Errorf("bigquery client cannot be nil")
 	}
 	if cfg == nil {
-		return nil, fmt.Errorf("BigQueryInserterConfig cannot be nil")
+		return nil, fmt.Errorf("BigQueryDatasetConfig cannot be nil")
 	}
 
 	projectID := client.Project()

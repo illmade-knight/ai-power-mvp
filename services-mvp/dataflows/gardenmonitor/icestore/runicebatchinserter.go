@@ -50,7 +50,7 @@ func main() {
 	err = gcsClient.Bucket(cfg.IceStore.BucketName).Create(ctx, cfg.ProjectID, nil)
 
 	gcsAdapter := icestore.NewGCSClientAdapter(gcsClient)
-	uploader, err := icestore.NewGCSBatchUploader(gcsAdapter, icestore.GCSBatchUploaderConfig{
+	uploader, err := icestore.NewGCSBatchUploader[types.GardenMonitorMessage](gcsAdapter, icestore.GCSBatchUploaderConfig{
 		BucketName:   cfg.IceStore.BucketName,
 		ObjectPrefix: "archived-data",
 	}, iceLogger)
@@ -68,13 +68,13 @@ func main() {
 	// Get the application-specific decoder.
 	decoder := types.NewGardenMonitorDecoder()
 
-	batcher := icestore.NewBatcher[types.GardenMonitorPayload](&icestore.BatcherConfig{
+	batcher := icestore.NewBatcher[types.GardenMonitorReadings](&icestore.BatcherConfig{
 		BatchSize:    3,
 		FlushTimeout: 5 * time.Second,
 	}, uploader, iceLogger)
 
 	// Assemble the final service using the new, clean constructor.
-	processingService, err := icestore.NewIceStorageService[types.GardenMonitorPayload](
+	processingService, err := icestore.NewIceStorageService[types.GardenMonitorReadings](
 		cfg.BatchProcessing.NumWorkers,
 		consumer,
 		batcher,

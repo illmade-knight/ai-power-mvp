@@ -107,20 +107,20 @@ func TestGardenMonitorService_FullFlow(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create the bqstore components.
-	inserter, err := bqstore.NewBigQueryInserter[types.GardenMonitorPayload](ctx, bqClient, &bqstore.BigQueryInserterConfig{
+	inserter, err := bqstore.NewBigQueryInserter[types.GardenMonitorReadings](ctx, bqClient, &bqstore.BigQueryDatasetConfig{
 		ProjectID: cfg.ProjectID,
 		DatasetID: cfg.BigQuery.DatasetID,
 		TableID:   cfg.BigQuery.TableID,
 	}, testLogger)
 	require.NoError(t, err)
 
-	batcher := bqstore.NewBatchInserter[types.GardenMonitorPayload](&bqstore.BatchInserterConfig{
+	batcher := bqstore.NewBatcher[types.GardenMonitorReadings](&bqstore.BatchInserterConfig{
 		BatchSize:    cfg.BatchProcessing.BatchSize,
 		FlushTimeout: cfg.BatchProcessing.FlushTimeout,
 	}, inserter, testLogger)
 
 	// Use the new service constructor, which correctly assembles the bigQueryService.
-	bigQueryService, err := bqstore.NewBigQueryService[types.GardenMonitorPayload](
+	bigQueryService, err := bqstore.NewBigQueryService[types.GardenMonitorReadings](
 		cfg.BatchProcessing.NumWorkers,
 		consumer,
 		batcher,
@@ -146,7 +146,7 @@ func TestGardenMonitorService_FullFlow(t *testing.T) {
 
 	// --- 4. Publish Test Messages (Unchanged) ---
 	const messageCount = 7
-	var lastTestPayload types.GardenMonitorPayload
+	var lastTestPayload types.GardenMonitorReadings
 	publisherClient, err := pubsub.NewClient(ctx, testProjectID)
 	require.NoError(t, err)
 	defer publisherClient.Close()
@@ -154,7 +154,7 @@ func TestGardenMonitorService_FullFlow(t *testing.T) {
 	defer topic.Stop()
 
 	for i := 0; i < messageCount; i++ {
-		payload := types.GardenMonitorPayload{DE: testDeviceUID, Sequence: 100 + i, Battery: 88 - i}
+		payload := types.GardenMonitorReadings{DE: testDeviceUID, Sequence: 100 + i, Battery: 88 - i}
 		lastTestPayload = payload
 		msgBytes, err := json.Marshal(types.GardenMonitorMessage{Payload: &payload})
 		require.NoError(t, err)
@@ -175,9 +175,9 @@ func TestGardenMonitorService_FullFlow(t *testing.T) {
 	it, err := query.Read(ctx)
 	require.NoError(t, err)
 
-	var receivedRows []types.GardenMonitorPayload
+	var receivedRows []types.GardenMonitorReadings
 	for {
-		var row types.GardenMonitorPayload
+		var row types.GardenMonitorReadings
 		if err := it.Next(&row); err == iterator.Done {
 			break
 		}
@@ -247,7 +247,7 @@ func setupBigQueryEmulatorForProcessingTest(ctx context.Context, t *testing.T) f
 	if err != nil && !strings.Contains(err.Error(), "Already Exists") {
 		require.NoError(t, err)
 	}
-	schema, _ := bigquery.InferSchema(types.GardenMonitorPayload{})
+	schema, _ := bigquery.InferSchema(types.GardenMonitorReadings{})
 	err = adminClient.Dataset(testBigQueryDatasetID).Table(testBigQueryTableID).Create(ctx, &bigquery.TableMetadata{Schema: schema})
 	if err != nil && !strings.Contains(err.Error(), "Already Exists") {
 		require.NoError(t, err)

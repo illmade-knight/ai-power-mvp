@@ -81,7 +81,7 @@ func main() {
 	}
 
 	schemaRegistry := make(map[string]interface{})
-	schemaRegistry["github.com/illmade-knight/ai-power-mpv/pkg/types.GardenMonitorPayload"] = types.GardenMonitorPayload{}
+	schemaRegistry["github.com/illmade-knight/ai-power-mpv/pkg/types.GardenMonitorReadings"] = types.GardenMonitorReadings{}
 	manager, err := servicemanager.NewServiceManager(ctx, servicesDef, *env, schemaRegistry, log.Logger)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to create service manager.")

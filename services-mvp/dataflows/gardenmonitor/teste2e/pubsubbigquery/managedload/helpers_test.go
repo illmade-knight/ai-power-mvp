@@ -38,7 +38,7 @@ type gardenMonitorPayloadGenerator struct {
 	lastAmbientLight int
 }
 
-// GeneratePayload creates a new GardenMonitorPayload based on the previous state.
+// GeneratePayload creates a new GardenMonitorReadings based on the previous state.
 func (g *gardenMonitorPayloadGenerator) GeneratePayload(device *loadgen.Device) ([]byte, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -73,7 +73,7 @@ func (g *gardenMonitorPayloadGenerator) GeneratePayload(device *loadgen.Device) 
 		g.lastWaterFlow = 0
 	}
 
-	payload := types.GardenMonitorPayload{
+	payload := types.GardenMonitorReadings{
 		DE:           device.ID,
 		SIM:          "sim-8675309",
 		RSSI:         "-75dBm",

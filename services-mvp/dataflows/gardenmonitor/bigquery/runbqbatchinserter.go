@@ -38,7 +38,7 @@ func main() {
 
 	// Create the BigQuery client.
 	// NOTE: This assumes a `NewProductionBigQueryClient` function exists in your bqstore package.
-	bqClient, err := bqstore.NewProductionBigQueryClient(ctx, &bqstore.BigQueryInserterConfig{
+	bqClient, err := bqstore.NewProductionBigQueryClient(ctx, &bqstore.BigQueryDatasetConfig{
 		ProjectID:       cfg.ProjectID,
 		CredentialsFile: cfg.BigQuery.CredentialsFile,
 	}, log.Logger)
@@ -58,12 +58,12 @@ func main() {
 	}
 
 	// Create the bqstore-specific components.
-	bqInserterCfg := &bqstore.BigQueryInserterConfig{
+	bqInserterCfg := &bqstore.BigQueryDatasetConfig{
 		ProjectID: cfg.ProjectID,
 		DatasetID: cfg.BigQuery.DatasetID,
 		TableID:   cfg.BigQuery.TableID,
 	}
-	bigQueryInserter, err := bqstore.NewBigQueryInserter[types.GardenMonitorPayload](ctx, bqClient, bqInserterCfg, log.Logger)
+	bigQueryInserter, err := bqstore.NewBigQueryInserter[types.GardenMonitorReadings](ctx, bqClient, bqInserterCfg, log.Logger)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to create BigQuery inserter")
 	}
@@ -72,13 +72,13 @@ func main() {
 		BatchSize:    cfg.BatchProcessing.BatchSize,
 		FlushTimeout: cfg.BatchProcessing.FlushTimeout,
 	}
-	batchInserter := bqstore.NewBatchInserter[types.GardenMonitorPayload](batcherCfg, bigQueryInserter, log.Logger)
+	batchInserter := bqstore.NewBatcher[types.GardenMonitorReadings](batcherCfg, bigQueryInserter, log.Logger)
 
 	// Get the application-specific decoder.
 	decoder := types.NewGardenMonitorDecoder()
 
 	// Assemble the final service using the new, clean constructor.
-	processingService, err := bqstore.NewBigQueryService[types.GardenMonitorPayload](
+	processingService, err := bqstore.NewBigQueryService[types.GardenMonitorReadings](
 		cfg.BatchProcessing.NumWorkers,
 		consumer,
 		batchInserter,

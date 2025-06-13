@@ -1,6 +1,8 @@
 package bqstore
 
 import (
+	"cloud.google.com/go/bigquery"
+	"context"
 	"fmt"
 
 	"github.com/illmade-knight/ai-power-mpv/pkg/consumers"
@@ -16,15 +18,14 @@ import (
 // NewBigQueryService is a constructor function that assembles and returns a fully configured
 // BigQuery processing pipeline.
 //
-// It takes the bqstore-specific BatchInserter and wires it into the generic
-// ProcessingService from the shared consumers package. The function returns a pointer
-// to the generic service, making the types explicit and avoiding linter warnings
-// about copying locks. The function's name provides the necessary domain context.
+// REFACTORED: This function now accepts a `MessageTransformer` instead of the legacy
+// `PayloadDecoder`. This aligns it with the updated consumers.ProcessingService,
+// allowing transformation logic to access the full `ConsumedMessage` and its metadata.
 func NewBigQueryService[T any](
 	numWorkers int,
 	consumer consumers.MessageConsumer,
 	batchInserter *BatchInserter[T], // The bqstore-specific processor
-	decoder consumers.PayloadDecoder[T],
+	transformer consumers.MessageTransformer[T],
 	logger zerolog.Logger,
 ) (*consumers.ProcessingService[T], error) {
 
@@ -34,13 +35,35 @@ func NewBigQueryService[T any](
 		numWorkers,
 		consumer,
 		batchInserter, // Pass the BatchInserter as the MessageProcessor
-		decoder,
+		transformer,   // Pass the new MessageTransformer
 		logger,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create generic processing service for bqstore: %w", err)
 	}
 
-	// Return the generic service pointer directly. No type alias or casting is needed.
 	return genericService, nil
+}
+
+// NewBigQueryBatchProcessor is a high-level convenience constructor that creates and
+// wires together a BigQueryInserter and a BatchInserter. This simplifies service
+// initialization by providing a single entry point for creating a complete BigQuery
+// batch processing pipeline that satisfies the consumers.MessageProcessor interface.
+func NewBigQueryBatchProcessor[T any](
+	ctx context.Context,
+	client *bigquery.Client,
+	batchCfg *BatchInserterConfig,
+	dsCfg *BigQueryDatasetConfig,
+	logger zerolog.Logger,
+) (*BatchInserter[T], error) {
+	// 1. Create the underlying BigQuery-specific data inserter.
+	bigQueryInserter, err := NewBigQueryInserter[T](ctx, client, dsCfg, logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create BigQuery inserter: %w", err)
+	}
+
+	// 2. Wrap the BigQuery inserter with the generic batching logic.
+	batchInserter := NewBatcher[T](batchCfg, bigQueryInserter, logger)
+
+	return batchInserter, nil
 }

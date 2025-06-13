@@ -35,17 +35,17 @@ func TestServerStartup(t *testing.T) {
 	// Create mocks for the service dependencies.
 	// Correctly instantiate the mock consumer using its constructor.
 	mockConsumer := consumers.NewMockMessageConsumer(1) // Assumes this is defined in a shared test helper file
-	mockInserter := &MockInserter[types.GardenMonitorPayload]{}
-	mockDecoder := func(payload []byte) (*types.GardenMonitorPayload, error) { return nil, nil }
+	mockInserter := &MockInserter[types.GardenMonitorReadings]{}
+	mockDecoder := func(payload []byte) (*types.GardenMonitorReadings, error) { return nil, nil }
 
-	batcher := bqstore.NewBatchInserter[types.GardenMonitorPayload](
+	batcher := bqstore.NewBatcher[types.GardenMonitorReadings](
 		&bqstore.BatchInserterConfig{BatchSize: 1, FlushTimeout: 1 * time.Second},
 		mockInserter,
 		logger,
 	)
 
 	// Use the new, clean constructor to create the processing service.
-	processingService, err := bqstore.NewBigQueryService[types.GardenMonitorPayload](
+	processingService, err := bqstore.NewBigQueryService[types.GardenMonitorReadings](
 		1, // numWorkers
 		mockConsumer,
 		batcher,

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/illmade-knight/ai-power-mpv/pkg/types"
 	"io"
 	"net/http"
 	"os"
@@ -30,30 +31,6 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
-
-// --- Test-Specific Data Structures ---
-type GardenMonitorMessage struct {
-	Topic     string                `json:"topic"`
-	MessageID string                `json:"message_id"`
-	Timestamp time.Time             `json:"timestamp"`
-	Payload   *GardenMonitorPayload `json:"payload"`
-}
-
-type GardenMonitorPayload struct {
-	UID          string `json:"DE" bigquery:"uid"`
-	SIM          string `json:"SIM" bigquery:"sim"`
-	RSSI         string `json:"RS" bigquery:"rssi"`
-	Version      string `json:"VR" bigquery:"version"`
-	Sequence     int    `json:"SQ" bigquery:"sequence"`
-	Battery      int    `json:"BA" bigquery:"battery"`
-	Temperature  int    `json:"TM" bigquery:"temperature"`
-	Humidity     int    `json:"HM" bigquery:"humidity"`
-	SoilMoisture int    `json:"SM1" bigquery:"soil_moisture"`
-	WaterFlow    int    `json:"FL1" bigquery:"waterflow"`
-	WaterQuality int    `json:"WQ" bigquery:"water_quality"`
-	TankLevel    int    `json:"DL1" bigquery:"tank_level"`
-	AmbientLight int    `json:"AM" bigquery:"ambient_light"`
-}
 
 // --- Constants for the integration test environment (Unchanged) ---
 const (
@@ -177,8 +154,8 @@ func setupBigQueryEmulatorForProcessingTest(t *testing.T, ctx context.Context) f
 	}
 
 	table := dataset.Table(testBigQueryTableID)
-	schema, err := bigquery.InferSchema(GardenMonitorPayload{})
-	require.NoError(t, err, "Failed to infer schema from GardenMonitorPayload")
+	schema, err := bigquery.InferSchema(types.GardenMonitorReadings{})
+	require.NoError(t, err, "Failed to infer schema from GardenMonitorReadings")
 
 	tableMeta := &bigquery.TableMetadata{Name: testBigQueryTableID, Schema: schema}
 	err = table.Create(ctx, tableMeta)
@@ -188,6 +165,13 @@ func setupBigQueryEmulatorForProcessingTest(t *testing.T, ctx context.Context) f
 	return func() {
 		require.NoError(t, container.Terminate(ctx))
 	}
+}
+
+type TestUpstreamMessage struct {
+	Topic     string
+	MessageID string
+	Timestamp time.Time
+	Payload   *types.GardenMonitorReadings
 }
 
 // TestBigQueryService_Integration_FullFlow tests the entire generic bqstore flow.
@@ -213,20 +197,34 @@ func TestBigQueryService_Integration_FullFlow(t *testing.T) {
 		BatchSize:    5,
 		FlushTimeout: 10 * time.Second,
 	}
-	bqInserterCfg := &bqstore.BigQueryInserterConfig{
+	bqInserterCfg := &bqstore.BigQueryDatasetConfig{
 		ProjectID: testProjectID,
 		DatasetID: testBigQueryDatasetID,
 		TableID:   testBigQueryTableID,
 	}
 
 	// --- Define the Decoder (Unchanged) ---
-	gardenPayloadDecoder := func(payload []byte) (*GardenMonitorPayload, error) {
-		var upstreamMsg GardenMonitorMessage
-		if err := json.Unmarshal(payload, &upstreamMsg); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal upstream message: %w", err)
-		}
-		return upstreamMsg.Payload, nil
-	}
+	//gardenPayloadDecoder := func(payload []byte) (*GardenMonitorReadings, error) {
+	//	var upstreamMsg GardenMonitorMessage
+	//	if err := json.Unmarshal(payload, &upstreamMsg); err != nil {
+	//		return nil, fmt.Errorf("failed to unmarshal upstream message: %w", err)
+	//	}
+	//	return upstreamMsg.Payload, nil
+	//}
+
+	//gardenPayloadTransformer := func(msg types.ConsumedMessage) (*types.GardenMonitorReadings, bool, error) {
+	//	var upstreamMsg types.GardenMonitorMessage
+	//	if err := json.Unmarshal(msg.Payload, &upstreamMsg); err != nil {
+	//		// This is a malformed message, return an error to Nack it.
+	//		return nil, false, fmt.Errorf("failed to unmarshal upstream message: %w", err)
+	//	}
+	//	// If the inner payload is nil, we want to skip this message but still Ack it.
+	//	if upstreamMsg.Payload == nil {
+	//		return nil, true, nil
+	//	}
+	//	// Success case
+	//	return upstreamMsg.Payload, false, nil
+	//}
 
 	// --- Initialize Components with new, refactored structure ---
 	consumer, err := consumers.NewGooglePubSubConsumer(ctx, consumerCfg, logger)
@@ -236,14 +234,13 @@ func TestBigQueryService_Integration_FullFlow(t *testing.T) {
 	require.NotNil(t, bqClient)
 	defer bqClient.Close()
 
-	bigQueryInserter, err := bqstore.NewBigQueryInserter[GardenMonitorPayload](ctx, bqClient, bqInserterCfg, logger)
+	// *** REFACTORED PART: Use the new, single convenience constructor ***
+	batchInserter, err := bqstore.NewBigQueryBatchProcessor[types.GardenMonitorReadings](ctx, bqClient, batcherCfg, bqInserterCfg, logger)
 	require.NoError(t, err)
-
-	batchInserter := bqstore.NewBatchInserter[GardenMonitorPayload](batcherCfg, bigQueryInserter, logger)
 
 	// *** REFACTORED PART: Use the new service constructor ***
 	numWorkers := 2
-	processingService, err := bqstore.NewBigQueryService[GardenMonitorPayload](numWorkers, consumer, batchInserter, gardenPayloadDecoder, logger)
+	processingService, err := bqstore.NewBigQueryService[types.GardenMonitorReadings](numWorkers, consumer, batchInserter, types.ConsumedMessageTransformer, logger)
 	require.NoError(t, err)
 
 	// --- Test Execution (Unchanged) ---
@@ -259,16 +256,16 @@ func TestBigQueryService_Integration_FullFlow(t *testing.T) {
 	inputTopic := pubsubTestPublisherClient.Topic(testInputTopicID)
 	defer inputTopic.Stop()
 
-	var lastTestPayload GardenMonitorPayload
+	var lastTestPayload types.GardenMonitorReadings
 	for i := 0; i < messageCount; i++ {
-		testPayload := GardenMonitorPayload{
-			UID:      testDeviceUID,
+		testPayload := types.GardenMonitorReadings{
+			DE:       testDeviceUID,
 			Sequence: 1337 + i,
 			Battery:  95 - i,
 		}
 		lastTestPayload = testPayload
 
-		testUpstreamMsg := GardenMonitorMessage{
+		testUpstreamMsg := TestUpstreamMessage{
 			Topic:     "devices/garden-monitor/telemetry",
 			MessageID: "test-message-id-" + strconv.Itoa(i),
 			Timestamp: time.Now().UTC().Truncate(time.Second),
@@ -298,9 +295,9 @@ func TestBigQueryService_Integration_FullFlow(t *testing.T) {
 	it, err := query.Read(ctx)
 	require.NoError(t, err, "query.Read failed")
 
-	var receivedRows []GardenMonitorPayload
+	var receivedRows []types.GardenMonitorReadings
 	for {
-		var row GardenMonitorPayload
+		var row types.GardenMonitorReadings
 		err := it.Next(&row)
 		if errors.Is(err, iterator.Done) {
 			break
@@ -312,7 +309,7 @@ func TestBigQueryService_Integration_FullFlow(t *testing.T) {
 	require.Len(t, receivedRows, messageCount, "The number of rows in BigQuery should match the number of messages sent.")
 
 	finalRow := receivedRows[len(receivedRows)-1]
-	assert.Equal(t, lastTestPayload.UID, finalRow.UID, "DE mismatch")
+	assert.Equal(t, lastTestPayload.DE, finalRow.DE, "DE mismatch")
 	assert.Equal(t, lastTestPayload.Sequence, finalRow.Sequence, "Sequence mismatch")
 	assert.Equal(t, lastTestPayload.Battery, finalRow.Battery, "Battery mismatch")
 

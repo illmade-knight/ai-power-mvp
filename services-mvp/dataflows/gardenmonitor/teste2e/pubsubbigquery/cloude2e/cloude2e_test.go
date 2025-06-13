@@ -140,8 +140,6 @@ func TestE2E_Cloud_MqttToBigQueryFlow(t *testing.T) {
 	}()
 	defer mqttServer.Shutdown()
 
-	// --- 5. Configure and Start BigQuery Processing Service ---
-	// This service connects our real Google Cloud Pub/Sub subscription to the real BigQuery table.
 	bqCfg := &bqinit.Config{
 		LogLevel:  "debug",
 		HTTPPort:  cloudTestBqHTTPPort,
@@ -151,15 +149,26 @@ func TestE2E_Cloud_MqttToBigQueryFlow(t *testing.T) {
 			CredentialsFile string `mapstructure:"credentials_file"`
 		}{SubscriptionID: subscriptionID},
 		BigQuery: struct {
-			DatasetID       string `mapstructure:"dataset_id"`
-			TableID         string `mapstructure:"table_id"`
+			bqstore.BigQueryDatasetConfig
 			CredentialsFile string `mapstructure:"credentials_file"`
-		}{DatasetID: datasetID, TableID: tableID},
+		}{
+			BigQueryDatasetConfig: bqstore.BigQueryDatasetConfig{
+				ProjectID: projectID,
+				DatasetID: datasetID,
+				TableID:   tableID,
+			},
+			CredentialsFile: "",
+		},
 		BatchProcessing: struct {
-			NumWorkers   int           `mapstructure:"num_workers"`
-			BatchSize    int           `mapstructure:"batch_size"`
-			FlushTimeout time.Duration `mapstructure:"flush_timeout"`
-		}{NumWorkers: 2, BatchSize: 5, FlushTimeout: 5 * time.Second},
+			bqstore.BatchInserterConfig `mapstructure:"datasetup"`
+			NumWorkers                  int `mapstructure:"num_workers"`
+		}{
+			BatchInserterConfig: bqstore.BatchInserterConfig{
+				BatchSize:    5,
+				FlushTimeout: 10 * time.Second,
+			},
+			NumWorkers: 2,
+		},
 	}
 
 	bqLogger := log.With().Str("service", "bq-processor").Logger()
@@ -175,27 +184,12 @@ func TestE2E_Cloud_MqttToBigQueryFlow(t *testing.T) {
 	}, bqLogger)
 	require.NoError(t, err)
 
-	// Create the bqstore-specific components.
-	bqInserter, err := bqstore.NewBigQueryInserter[types.GardenMonitorPayload](ctx, bqClient, &bqstore.BigQueryInserterConfig{
-		ProjectID: bqCfg.ProjectID,
-		DatasetID: bqCfg.BigQuery.DatasetID,
-		TableID:   bqCfg.BigQuery.TableID,
-	}, bqLogger)
+	// *** REFACTORED PART: Use the new, single convenience constructor ***
+	batchInserter, err := bqstore.NewBigQueryBatchProcessor[types.GardenMonitorReadings](ctx, bqClient, &bqCfg.BatchProcessing.BatchInserterConfig, &bqCfg.BigQuery.BigQueryDatasetConfig, bqLogger)
 	require.NoError(t, err)
 
-	batcher := bqstore.NewBatchInserter[types.GardenMonitorPayload](&bqstore.BatchInserterConfig{
-		BatchSize:    bqCfg.BatchProcessing.BatchSize,
-		FlushTimeout: bqCfg.BatchProcessing.FlushTimeout,
-	}, bqInserter, bqLogger)
-
-	// Use the new, cleaner constructor for the BigQuery service.
-	processingService, err := bqstore.NewBigQueryService[types.GardenMonitorPayload](
-		bqCfg.BatchProcessing.NumWorkers,
-		bqConsumer,
-		batcher,
-		types.NewGardenMonitorDecoder(),
-		bqLogger,
-	)
+	// *** REFACTORED PART: Use the new service constructor ***
+	processingService, err := bqstore.NewBigQueryService[types.GardenMonitorReadings](bqCfg.BatchProcessing.NumWorkers, bqConsumer, batchInserter, types.ConsumedMessageTransformer, bqLogger)
 	require.NoError(t, err)
 
 	bqServer := bqinit.NewServer(bqCfg, processingService, bqLogger)
@@ -214,7 +208,7 @@ func TestE2E_Cloud_MqttToBigQueryFlow(t *testing.T) {
 	require.NoError(t, err)
 	defer mqttTestPublisher.Disconnect(250)
 
-	testPayload := types.GardenMonitorPayload{
+	testPayload := types.GardenMonitorReadings{
 		DE:       testMqttDeviceUID,
 		Sequence: 456,
 		Battery:  99,
@@ -232,7 +226,7 @@ func TestE2E_Cloud_MqttToBigQueryFlow(t *testing.T) {
 	log.Info().Msg("CloudTest: Published test message to MQTT.")
 
 	// --- 7. Verify Data in Real BigQuery ---
-	var receivedRows []types.GardenMonitorPayload
+	var receivedRows []types.GardenMonitorReadings
 	var lastQueryErr error
 	// Allow ample time for data to propagate through the live cloud services.
 	verificationTimeout := time.After(2 * time.Minute)
@@ -257,9 +251,9 @@ VerificationLoop:
 				continue // Try again on the next tick
 			}
 
-			var currentRows []types.GardenMonitorPayload
+			var currentRows []types.GardenMonitorReadings
 			for {
-				var row types.GardenMonitorPayload
+				var row types.GardenMonitorReadings
 				err := it.Next(&row)
 				if errors.Is(err, iterator.Done) {
 					break
@@ -350,7 +344,7 @@ func setupRealBigQuery(t *testing.T, ctx context.Context, projectID, datasetID, 
 	t.Logf("Created temporary BigQuery Dataset: %s", datasetID)
 
 	// Infer schema from the payload struct and create the table.
-	schema, err := bigquery.InferSchema(types.GardenMonitorPayload{})
+	schema, err := bigquery.InferSchema(types.GardenMonitorReadings{})
 	require.NoError(t, err)
 	tableRef := client.Dataset(datasetID).Table(tableID)
 	err = tableRef.Create(ctx, &bigquery.TableMetadata{Name: tableID, Schema: schema})

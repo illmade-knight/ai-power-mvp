@@ -25,7 +25,7 @@ func TestBatchInserter_BatchSizeTrigger(t *testing.T) {
 		FlushTimeout: 1 * time.Second,
 	}
 
-	batcher := bqstore.NewBatchInserter[testPayload](config, mockInserter, logger)
+	batcher := bqstore.NewBatcher[testPayload](config, mockInserter, logger)
 	batcher.Start()
 	defer batcher.Stop()
 
@@ -54,7 +54,7 @@ func TestBatchInserter_FlushTimeoutTrigger(t *testing.T) {
 		FlushTimeout: 100 * time.Millisecond,
 	}
 
-	batcher := bqstore.NewBatchInserter[testPayload](config, mockInserter, logger)
+	batcher := bqstore.NewBatcher[testPayload](config, mockInserter, logger)
 	batcher.Start()
 	defer batcher.Stop()
 
@@ -83,7 +83,7 @@ func TestBatchInserter_StopFlushesFinalBatch(t *testing.T) {
 		FlushTimeout: 5 * time.Second, // Long timeout to ensure it doesn't trigger
 	}
 
-	batcher := bqstore.NewBatchInserter[testPayload](config, mockInserter, logger)
+	batcher := bqstore.NewBatcher[testPayload](config, mockInserter, logger)
 	batcher.Start()
 
 	// Send a partial batch.
@@ -112,7 +112,7 @@ func TestBatchInserter_AckNackLogic(t *testing.T) {
 			},
 		}
 		config := &bqstore.BatchInserterConfig{BatchSize: 2, FlushTimeout: time.Second}
-		batcher := bqstore.NewBatchInserter[testPayload](config, mockInserter, logger)
+		batcher := bqstore.NewBatcher[testPayload](config, mockInserter, logger)
 		batcher.Start()
 		defer batcher.Stop()
 
@@ -147,7 +147,7 @@ func TestBatchInserter_AckNackLogic(t *testing.T) {
 			},
 		}
 		config := &bqstore.BatchInserterConfig{BatchSize: 2, FlushTimeout: time.Second}
-		batcher := bqstore.NewBatchInserter[testPayload](config, mockInserter, logger)
+		batcher := bqstore.NewBatcher[testPayload](config, mockInserter, logger)
 		batcher.Start()
 		defer batcher.Stop()
 
