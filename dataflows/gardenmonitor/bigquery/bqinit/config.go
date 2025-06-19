@@ -30,10 +30,7 @@ type Config struct {
 	} `mapstructure:"consumer"`
 
 	// BigQuery holds settings for the BigQuery inserter.
-	BigQuery struct {
-		bqstore.BigQueryDatasetConfig
-		CredentialsFile string `mapstructure:"credentials_file"`
-	} `mapstructure:"bigquery"`
+	BigQuery bqstore.BigQueryDatasetConfig `mapstructure:"bigquery"`
 
 	// BatchProcessing holds settings for the processing and batchProcessing logic.
 	BatchProcessing struct {

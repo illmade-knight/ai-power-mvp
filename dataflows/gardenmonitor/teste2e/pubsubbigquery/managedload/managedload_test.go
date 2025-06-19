@@ -11,23 +11,19 @@ import (
 	"github.com/illmade-knight/ai-power-mvp/dataflows/gardenmonitor/bigquery/bqinit"
 	"github.com/illmade-knight/ai-power-mvp/dataflows/gardenmonitor/ingestion/mqinit"
 	"github.com/illmade-knight/go-iot/pkg/consumers"
-	"github.com/testcontainers/testcontainers-go"
+	"github.com/illmade-knight/go-iot/pkg/helpers/emulators"
 	"net/http"
 	"os"
-	"path/filepath"
-	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"cloud.google.com/go/bigquery"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go/wait"
-
-	"cloud.google.com/go/bigquery"
 	"google.golang.org/api/iterator"
 
 	"github.com/illmade-knight/go-iot/pkg/bqstore"
@@ -181,7 +177,7 @@ func TestManagedCloudLoad(t *testing.T) {
 
 	// --- 5. Start Local Services & Load Generator ---
 	log.Info().Msg("LoadTest: Setting up Mosquitto container...")
-	mqttBrokerURL, mosquittoCleanup := setupMosquittoContainer(t, ctx)
+	mqttBrokerURL, mosquittoCleanup := emulators.SetupMosquittoContainer(t, ctx, emulators.GetDefaultMqttImageContainer())
 	defer mosquittoCleanup()
 
 	ingestionService, mqttServer := startIngestionService(t, ctx, projectID, mqttBrokerURL, topicID)
@@ -326,7 +322,8 @@ func startIngestionService(t *testing.T, ctx context.Context, projectID, mqttBro
 		Service: mqttconverter.IngestionServiceConfig{InputChanCapacity: 1000, NumProcessingWorkers: 20},
 	}
 	logger := log.With().Str("service", "mqtt-ingestion").Logger()
-	publisher, err := mqttconverter.NewGooglePubSubPublisher(ctx, &mqttconverter.GooglePubSubPublisherConfig{ProjectID: mqttCfg.ProjectID, TopicID: mqttCfg.Publisher.TopicID}, logger)
+	publisher, err := mqttconverter.NewGooglePubsubPublisher(ctx,
+		mqttconverter.GooglePubsubPublisherConfig{ProjectID: mqttCfg.ProjectID, TopicID: mqttCfg.Publisher.TopicID}, logger)
 	require.NoError(t, err)
 	service := mqttconverter.NewIngestionService(publisher, nil, logger, mqttCfg.Service, mqttCfg.MQTT)
 	server := mqinit.NewServer(mqttCfg, service, logger)
@@ -348,16 +345,10 @@ func startBQProcessingService(t *testing.T, ctx context.Context, gcpProjectID, s
 			SubscriptionID  string `mapstructure:"subscription_id"`
 			CredentialsFile string `mapstructure:"credentials_file"`
 		}{SubscriptionID: subID},
-		BigQuery: struct {
-			bqstore.BigQueryDatasetConfig
-			CredentialsFile string `mapstructure:"credentials_file"`
-		}{
-			BigQueryDatasetConfig: bqstore.BigQueryDatasetConfig{
-				ProjectID: gcpProjectID,
-				DatasetID: datasetID,
-				TableID:   tableID,
-			},
-			CredentialsFile: "",
+		BigQuery: bqstore.BigQueryDatasetConfig{
+			ProjectID: gcpProjectID,
+			DatasetID: datasetID,
+			TableID:   tableID,
 		},
 		BatchProcessing: struct {
 			bqstore.BatchInserterConfig `mapstructure:"datasetup"`
@@ -396,36 +387,4 @@ func startBQProcessingService(t *testing.T, ctx context.Context, gcpProjectID, s
 		}
 	}()
 	return processingService, bqServer
-}
-
-func extractFinalName(fullName string) string {
-	parts := strings.Split(fullName, "/")
-	if len(parts) > 0 {
-		return parts[len(parts)-1]
-	}
-	return ""
-}
-
-func setupMosquittoContainer(t *testing.T, ctx context.Context) (brokerURL string, cleanupFunc func()) {
-	t.Helper()
-	confPath := filepath.Join(t.TempDir(), "mosquitto.conf")
-	err := os.WriteFile(confPath, []byte("listener 1883\nallow_anonymous true\n"), 0644)
-	require.NoError(t, err)
-
-	req := testcontainers.ContainerRequest{
-		Image:        testMosquittoImage,
-		ExposedPorts: []string{testMqttBrokerPort},
-		WaitingFor:   wait.ForLog("mosquitto version 2.0").WithStartupTimeout(60 * time.Second),
-		Files:        []testcontainers.ContainerFile{{HostFilePath: confPath, ContainerFilePath: "/mosquitto/config/mosquitto.conf"}},
-	}
-	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{ContainerRequest: req, Started: true})
-	require.NoError(t, err)
-
-	host, err := container.Host(ctx)
-	require.NoError(t, err)
-	port, err := container.MappedPort(ctx, testMqttBrokerPort)
-	require.NoError(t, err)
-	brokerURL = fmt.Sprintf("tcp://%s:%s", host, port.Port())
-
-	return brokerURL, func() { require.NoError(t, container.Terminate(ctx)) }
 }

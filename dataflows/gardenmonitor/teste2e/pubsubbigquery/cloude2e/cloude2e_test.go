@@ -7,12 +7,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/illmade-knight/go-iot/pkg/consumers"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/wait"
+	"github.com/illmade-knight/go-iot/pkg/helpers/emulators"
+	"google.golang.org/api/option"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -39,9 +37,6 @@ import (
 // --- Cloud Test Constants ---
 const (
 	cloudTestGCPProjectID = "gemini-power-test"
-	// MQTT -> Ingestion Service
-	testMosquittoImage = "eclipse-mosquitto:2.0"
-	testMqttBrokerPort = "1883/tcp"
 
 	// Note: Your GCP Project ID should be set via the GOOGLE_CLOUD_PROJECT env var
 	cloudTestRunPrefix      = "cloud_test"
@@ -49,9 +44,9 @@ const (
 	testMqttDeviceUID       = "GARDEN_MONITOR_CLOUD_001"
 	testMqttClientIDPrefix  = "ingestion-service-cloud"
 	bqDatasetDefaultTTLDays = 1 // Datasets created for tests will be auto-deleted after this many days
-	cloudTestMqttHTTPPort   = ":9090"
-	cloudTestBqHTTPPort     = ":9091"
-	cloudTestTimeout        = 5 * time.Minute
+	//cloudTestMqttHTTPPort   = ":9090"
+	//cloudTestBqHTTPPort     = ":9091"
+	cloudTestTimeout = 5 * time.Minute
 )
 
 // TestE2E_Cloud_MqttToBigQueryFlow is a full end-to-end test against a real GCP project.
@@ -86,8 +81,8 @@ func TestE2E_Cloud_MqttToBigQueryFlow(t *testing.T) {
 	tableID := fmt.Sprintf("monitor_payloads_%s", runID)
 
 	// --- 3. Setup Temporary Cloud & Local Infrastructure ---
-	log.Info().Msg("CloudTest: Setting up Mosquitto container...")
-	mqttBrokerURL, mosquittoCleanup := setupMosquittoContainer(t, ctx) // We still need a local MQTT broker
+	log.Info().Msg("E2E: Setting up Mosquitto emulator...")
+	mqttBrokerURL, mosquittoCleanup := emulators.SetupMosquittoContainer(t, ctx, emulators.GetDefaultMqttImageContainer())
 	defer mosquittoCleanup()
 
 	log.Info().Str("topic", topicID).Str("subscription", subscriptionID).Msg("CloudTest: Setting up real Cloud Pub/Sub resources...")
@@ -104,8 +99,8 @@ func TestE2E_Cloud_MqttToBigQueryFlow(t *testing.T) {
 	// --- 4. Configure and Start MQTT Ingestion Service ---
 	// This service connects our local MQTT broker to the real Google Cloud Pub/Sub topic.
 	mqttCfg := &mqinit.Config{
-		LogLevel:  "debug",
-		HTTPPort:  cloudTestMqttHTTPPort,
+		LogLevel: "debug",
+		//HTTPPort:  cloudTestMqttHTTPPort,
 		ProjectID: projectID,
 		Publisher: struct {
 			TopicID         string `mapstructure:"topic_id"`
@@ -125,9 +120,11 @@ func TestE2E_Cloud_MqttToBigQueryFlow(t *testing.T) {
 	}
 	mqttLogger := log.With().Str("service", "mqtt-ingestion").Logger()
 	// This publisher will use the real projectID and topicID, and authenticate via ADC.
-	mqttPublisher, err := mqttconverter.NewGooglePubSubPublisher(ctx, &mqttconverter.GooglePubSubPublisherConfig{
-		ProjectID: mqttCfg.ProjectID,
-		TopicID:   mqttCfg.Publisher.TopicID,
+	mqttPublisher, err := mqttconverter.NewGooglePubsubPublisher(ctx, mqttconverter.GooglePubsubPublisherConfig{
+		ProjectID:       mqttCfg.ProjectID,
+		TopicID:         mqttCfg.Publisher.TopicID,
+		ClientOptions:   make([]option.ClientOption, 0),
+		PublishSettings: mqttconverter.GetDefaultPublishSettings(),
 	}, mqttLogger)
 	require.NoError(t, err)
 
@@ -141,23 +138,17 @@ func TestE2E_Cloud_MqttToBigQueryFlow(t *testing.T) {
 	defer mqttServer.Shutdown()
 
 	bqCfg := &bqinit.Config{
-		LogLevel:  "debug",
-		HTTPPort:  cloudTestBqHTTPPort,
+		LogLevel: "debug",
+		//HTTPPort:  cloudTestBqHTTPPort,
 		ProjectID: projectID,
 		Consumer: struct {
 			SubscriptionID  string `mapstructure:"subscription_id"`
 			CredentialsFile string `mapstructure:"credentials_file"`
 		}{SubscriptionID: subscriptionID},
-		BigQuery: struct {
-			bqstore.BigQueryDatasetConfig
-			CredentialsFile string `mapstructure:"credentials_file"`
-		}{
-			BigQueryDatasetConfig: bqstore.BigQueryDatasetConfig{
-				ProjectID: projectID,
-				DatasetID: datasetID,
-				TableID:   tableID,
-			},
-			CredentialsFile: "",
+		BigQuery: bqstore.BigQueryDatasetConfig{
+			ProjectID: projectID,
+			DatasetID: datasetID,
+			TableID:   tableID,
 		},
 		BatchProcessing: struct {
 			bqstore.BatchInserterConfig `mapstructure:"datasetup"`
@@ -181,11 +172,11 @@ func TestE2E_Cloud_MqttToBigQueryFlow(t *testing.T) {
 	bqConsumer, err := consumers.NewGooglePubSubConsumer(ctx, &consumers.GooglePubSubConsumerConfig{
 		ProjectID:      bqCfg.ProjectID,
 		SubscriptionID: bqCfg.Consumer.SubscriptionID,
-	}, bqLogger)
+	}, make([]option.ClientOption, 0), bqLogger)
 	require.NoError(t, err)
 
 	// *** REFACTORED PART: Use the new, single convenience constructor ***
-	batchInserter, err := bqstore.NewBigQueryBatchProcessor[types.GardenMonitorReadings](ctx, bqClient, &bqCfg.BatchProcessing.BatchInserterConfig, &bqCfg.BigQuery.BigQueryDatasetConfig, bqLogger)
+	batchInserter, err := bqstore.NewBigQueryBatchProcessor[types.GardenMonitorReadings](ctx, bqClient, &bqCfg.BatchProcessing.BatchInserterConfig, &bqCfg.BigQuery, bqLogger)
 	require.NoError(t, err)
 
 	// *** REFACTORED PART: Use the new service constructor ***
@@ -204,7 +195,7 @@ func TestE2E_Cloud_MqttToBigQueryFlow(t *testing.T) {
 	time.Sleep(5 * time.Second)
 
 	// --- 6. Publish a Test Message to MQTT ---
-	mqttTestPublisher, err := createTestMqttPublisherClient(mqttBrokerURL, "cloud-test-publisher")
+	mqttTestPublisher, err := emulators.CreateTestMqttPublisher(mqttBrokerURL, "cloud-test-publisher")
 	require.NoError(t, err)
 	defer mqttTestPublisher.Disconnect(250)
 
@@ -366,45 +357,4 @@ func setupRealBigQuery(t *testing.T, ctx context.Context, projectID, datasetID, 
 		}
 		client.Close()
 	}
-}
-
-// setupMosquittoContainer and createTestMqttPublisherClient are copied from integration_test.go
-// as they are still needed to provide the entry point for the test message.
-// (Assuming testcontainers and other dependencies are available)
-
-func setupMosquittoContainer(t *testing.T, ctx context.Context) (brokerURL string, cleanupFunc func()) {
-	t.Helper()
-	confPath := filepath.Join(t.TempDir(), "mosquitto.conf")
-	err := os.WriteFile(confPath, []byte("listener 1883\nallow_anonymous true\n"), 0644)
-	require.NoError(t, err)
-
-	req := testcontainers.ContainerRequest{
-		Image:        testMosquittoImage,
-		ExposedPorts: []string{testMqttBrokerPort},
-		WaitingFor:   wait.ForLog("mosquitto version 2.0").WithStartupTimeout(60 * time.Second),
-		Files:        []testcontainers.ContainerFile{{HostFilePath: confPath, ContainerFilePath: "/mosquitto/config/mosquitto.conf"}},
-	}
-	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{ContainerRequest: req, Started: true})
-	require.NoError(t, err)
-
-	host, err := container.Host(ctx)
-	require.NoError(t, err)
-	port, err := container.MappedPort(ctx, testMqttBrokerPort)
-	require.NoError(t, err)
-	brokerURL = fmt.Sprintf("tcp://%s:%s", host, port.Port())
-
-	return brokerURL, func() { require.NoError(t, container.Terminate(ctx)) }
-}
-
-// createTestMqttPublisherClient creates an MQTT client for publishing test messages.
-func createTestMqttPublisherClient(brokerURL string, clientID string) (mqtt.Client, error) {
-	opts := mqtt.NewClientOptions().
-		AddBroker(brokerURL).
-		SetClientID(clientID).
-		SetConnectTimeout(10 * time.Second)
-	client := mqtt.NewClient(opts)
-	if token := client.Connect(); token.WaitTimeout(15*time.Second) && token.Error() != nil {
-		return nil, fmt.Errorf("test mqtt publisher Connect(): %w", token.Error())
-	}
-	return client, nil
 }

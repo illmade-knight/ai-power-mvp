@@ -2,11 +2,10 @@ package main
 
 import (
 	"context"
+	"github.com/illmade-knight/ai-power-mvp/dataflows/gardenmonitor/bigquery/bqinit"
 	"os"
 	"os/signal"
 	"syscall"
-
-	"bigquery/bqinit"
 
 	"github.com/illmade-knight/go-iot/pkg/bqstore"
 	"github.com/illmade-knight/go-iot/pkg/consumers"
@@ -52,7 +51,8 @@ func main() {
 		ProjectID:      cfg.ProjectID,
 		SubscriptionID: cfg.Consumer.SubscriptionID,
 	}
-	consumer, err := consumers.NewGooglePubSubConsumer(ctx, consumerCfg, log.Logger)
+
+	consumer, err := consumers.NewGooglePubSubConsumer(ctx, consumerCfg, nil, log.Logger)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to create Pub/Sub consumer")
 	}
@@ -74,15 +74,12 @@ func main() {
 	}
 	batchInserter := bqstore.NewBatcher[types.GardenMonitorReadings](batcherCfg, bigQueryInserter, log.Logger)
 
-	// Get the application-specific decoder.
-	decoder := types.NewGardenMonitorDecoder()
-
 	// Assemble the final service using the new, clean constructor.
 	processingService, err := bqstore.NewBigQueryService[types.GardenMonitorReadings](
 		cfg.BatchProcessing.NumWorkers,
 		consumer,
 		batchInserter,
-		decoder,
+		types.ConsumedMessageTransformer,
 		log.Logger,
 	)
 	if err != nil {

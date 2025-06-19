@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/illmade-knight/ai-power-mvp/dataflows/gardenmonitor/ingestion/mqinit"
+	"github.com/illmade-knight/go-iot/pkg/helpers/emulators"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -17,13 +18,11 @@ import (
 
 	"cloud.google.com/go/pubsub"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/illmade-knight/go-iot/pkg/mqttconverter"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/api/option"
-
-	"github.com/illmade-knight/go-iot/pkg/mqttconverter"
 
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -31,12 +30,13 @@ import (
 
 // --- Test Constants ---
 const (
-	testProjectID       = "test-mqtt-project"
-	testMqttTopic       = "devices/test-device-01/data"
-	testMqttTopicFilter = "devices/+/data"
-	testPubSubTopicID   = "mqtt-converted-topic"
-	testPubSubSubID     = "mqtt-converted-sub"
-	testHTTPPort        = ":8898"
+	testPubsubEmulatorImage  = "gcr.io/google.com/cloudsdktool/cloud-sdk:emulators"
+	testProjectID            = "test-mqtt-project"
+	testMqttTopic            = "devices/test-device-01/data"
+	testMqttTopicFilter      = "devices/+/data"
+	testPubSubTopicID        = "mqtt-converted-topic"
+	testPubSubSubscriptionID = "mqtt-converted-sub"
+	testHTTPPort             = ":8898"
 )
 
 // --- Full Integration Test for the MQTT Ingestion Service ---
@@ -53,10 +53,17 @@ func TestMqttIngestionService_FullFlow(t *testing.T) {
 	defer mosquittoCleanup()
 
 	log.Info().Msg("Setting up Pub/Sub emulator for test...")
-	pubsubEmulatorHost, pubsubCleanup := setupPubSubEmulator(t, ctx, testProjectID)
+	pubsubOptions, pubsubCleanup := emulators.SetupPubSubEmulator(t, ctx, &emulators.PubsubConfig{
+		GCImageContainer: emulators.GCImageContainer{
+			ImageContainer: emulators.ImageContainer{
+				EmulatorImage:    testPubsubEmulatorImage,
+				EmulatorHTTPPort: "8085",
+			},
+			ProjectID: testProjectID,
+		},
+		TopicSubs: map[string]string{testPubSubTopicID: testPubSubSubscriptionID},
+	})
 	defer pubsubCleanup()
-	// Set the environment variable so the service's publisher automatically connects to the emulator.
-	t.Setenv("PUBSUB_EMULATOR_HOST", pubsubEmulatorHost)
 
 	// --- 2. Configure the application for the test environment ---
 	cfg := &mqinit.Config{
@@ -111,15 +118,11 @@ func TestMqttIngestionService_FullFlow(t *testing.T) {
 
 	// --- 5. Prepare Test Clients (Pub/Sub Subscriber and MQTT Publisher) ---
 	// Create Pub/Sub client for verification, configured explicitly to use the emulator.
-	psVerifyClient, err := pubsub.NewClient(ctx, testProjectID, option.WithEndpoint(pubsubEmulatorHost), option.WithoutAuthentication())
+	psClient, err := pubsub.NewClient(ctx, testProjectID, pubsubOptions...)
 	require.NoError(t, err)
-	defer psVerifyClient.Close()
+	defer psClient.Close()
 
-	psTopic, err := psVerifyClient.CreateTopic(ctx, testPubSubTopicID)
-	require.NoError(t, err)
-	_, err = psVerifyClient.CreateSubscription(ctx, testPubSubSubID, pubsub.SubscriptionConfig{Topic: psTopic})
-	require.NoError(t, err)
-	psSub := psVerifyClient.Subscription(testPubSubSubID)
+	psSub := psClient.Subscription(testPubSubSubscriptionID)
 
 	// Create MQTT client to publish the test message
 	mqttPublisher, err := createTestMqttPublisher(mqttBrokerURL, "test-publisher-client")
@@ -191,25 +194,6 @@ func setupMosquittoContainer(t *testing.T, ctx context.Context) (brokerURL strin
 	brokerURL = fmt.Sprintf("tcp://%s:%s", host, port.Port())
 
 	return brokerURL, func() { require.NoError(t, container.Terminate(ctx)) }
-}
-
-func setupPubSubEmulator(t *testing.T, ctx context.Context, projectID string) (host string, cleanupFunc func()) {
-	t.Helper()
-	req := testcontainers.ContainerRequest{
-		Image:        "gcr.io/google.com/cloudsdktool/cloud-sdk:emulators",
-		ExposedPorts: []string{"8085/tcp"},
-		Cmd:          []string{"gcloud", "beta", "emulators", "pubsub", "start", "--project=" + projectID, "--host-port=0.0.0.0:8085"},
-		WaitingFor:   wait.ForLog("INFO: Server started, listening on").WithStartupTimeout(60 * time.Second),
-	}
-	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{ContainerRequest: req, Started: true})
-	require.NoError(t, err)
-
-	endpoint, err := container.Endpoint(ctx, "")
-	require.NoError(t, err)
-
-	return endpoint, func() {
-		require.NoError(t, container.Terminate(ctx))
-	}
 }
 
 func createTestMqttPublisher(brokerURL, clientID string) (mqtt.Client, error) {
