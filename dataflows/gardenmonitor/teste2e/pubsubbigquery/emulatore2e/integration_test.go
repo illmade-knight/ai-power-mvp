@@ -160,7 +160,7 @@ func TestE2E_MqttToBigQueryFlow(t *testing.T) {
 	bqClient, err := bigquery.NewClient(ctx, testProjectID, bqOptions...)
 	defer bqClient.Close()
 
-	bqConsumer, err := consumers.NewGooglePubSubConsumer(ctx, &consumers.GooglePubSubConsumerConfig{
+	bqConsumer, err := consumers.NewGooglePubsubConsumer(ctx, &consumers.GooglePubsubConsumerConfig{
 		ProjectID:      testProjectID,
 		SubscriptionID: testPubsubSubscriptionID,
 	}, pubsubOptions, bqLogger)

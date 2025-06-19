@@ -3,6 +3,7 @@
 package main_test
 
 import (
+	"cloud.google.com/go/pubsub"
 	"cloud.google.com/go/storage"
 	"context"
 	"encoding/json"
@@ -33,7 +34,7 @@ import (
 
 // --- E2E Test Constants ---
 const (
-	testProjectID = "e2e-garden-project"
+	cloudTestGCPProjectID = "gemini-power-test"
 
 	// MQTT -> Ingestion Service
 	testMosquittoImage     = "eclipse-mosquitto:2.0"
@@ -42,15 +43,11 @@ const (
 	testMqttDeviceUID      = "GARDEN_MONITOR_E2E_001"
 	testMqttClientIDPrefix = "ingestion-service-e2e"
 
-	// Pub/Sub -> Link between services
-	// Pub/Sub (The link between Ingestion and Processing services)
-	testPubsubEmulatorImage  = "gcr.io/google.com/cloudsdktool/cloud-sdk:emulators"
-	testPubsubEmulatorPort   = "8085"
 	testPubsubTopicID        = "garden-monitor-processed"     // Ingestion publishes here
 	testPubsubSubscriptionID = "garden-monitor-processed-sub" // Processing subscribes here
 
 	// GCS
-	testGCSBucket = "test-bucket"
+	testGCSBucket = "illmade-test-bucket"
 )
 
 // --- Full End-to-End Test ---
@@ -69,24 +66,14 @@ func TestE2E_MqttToIceStoreFlow(t *testing.T) {
 	})
 	defer mosquittoCleanup()
 
-	log.Info().Msg("E2E: Setting up Pub/Sub emulator...")
-	pubsubOptions, pubsubCleanup := emulators.SetupPubSubEmulator(t, ctx, emulators.PubsubConfig{
-		GCImageContainer: emulators.GCImageContainer{
-			ImageContainer: emulators.ImageContainer{
-				EmulatorImage:    testPubsubEmulatorImage,
-				EmulatorHTTPPort: testPubsubEmulatorPort,
-			},
-			ProjectID: testProjectID,
-		},
-		TopicSubs: map[string]string{testPubsubTopicID: testPubsubSubscriptionID},
-	})
+	pubsubCleanup := setupRealPubSub(t, ctx, cloudTestGCPProjectID, testPubsubTopicID, testPubsubSubscriptionID)
 	defer pubsubCleanup()
 
 	consumerLogger := log.With().Str("service", "pubsub-consumer").Logger()
 	gcsConsumer, err := consumers.NewGooglePubsubConsumer(ctx, &consumers.GooglePubsubConsumerConfig{
-		ProjectID:      testProjectID,
+		ProjectID:      cloudTestGCPProjectID,
 		SubscriptionID: testPubsubSubscriptionID,
-	}, pubsubOptions, consumerLogger)
+	}, nil, consumerLogger)
 	require.NoError(t, err)
 
 	//ensure service start
@@ -96,7 +83,7 @@ func TestE2E_MqttToIceStoreFlow(t *testing.T) {
 	// --- 2. Configure and Start MQTT Ingestion Service ---
 	mqttCfg := &mqinit.Config{
 		LogLevel:  "debug",
-		ProjectID: testProjectID,
+		ProjectID: cloudTestGCPProjectID,
 		Publisher: struct {
 			TopicID         string `mapstructure:"topic_id"`
 			CredentialsFile string `mapstructure:"credentials_file"`
@@ -138,7 +125,7 @@ func TestE2E_MqttToIceStoreFlow(t *testing.T) {
 	// --- 3. Configure and Start IceStore Processing Service ---
 	bqCfg := &icinit.IceServiceConfig{
 		LogLevel:  "debug",
-		ProjectID: testProjectID,
+		ProjectID: cloudTestGCPProjectID,
 		Consumer: struct {
 			SubscriptionID  string `mapstructure:"subscription_id"`
 			CredentialsFile string `mapstructure:"credentials_file"`
@@ -159,8 +146,15 @@ func TestE2E_MqttToIceStoreFlow(t *testing.T) {
 	}
 
 	gcsLogger := log.With().Str("service", "gcs-processor").Logger()
-	gcsClient, gcsCleanUp := emulators.SetupGCSEmulator(t, ctx, emulators.GetDefaultGCSConfig(testProjectID, testGCSBucket))
-	defer gcsCleanUp()
+
+	gcsClient, err := storage.NewClient(ctx)
+	require.NoError(t, err)
+
+	bucketCleanup, err := setupRealGCSBucket(t, ctx, gcsClient)
+	if err != nil {
+		return
+	}
+	defer bucketCleanup()
 
 	batcher, err := icestore.NewGCSBatchProcessor(
 		icestore.NewGCSClientAdapter(gcsClient),
@@ -243,4 +237,75 @@ func listGCSObjectAttrs(ctx context.Context, bucket *storage.BucketHandle) ([]*s
 		attrs = append(attrs, objAttrs)
 	}
 	return attrs, nil
+}
+
+func setupRealGCSBucket(t *testing.T, ctx context.Context, client *storage.Client) (cleanup func(), err error) {
+	err = client.Bucket(testGCSBucket).Create(ctx, cloudTestGCPProjectID, nil)
+	if err != nil {
+		t.Errorf("Failed to create test GCS bucket: %v", err)
+		return nil, err
+	}
+
+	return func() {
+		client.Bucket(testGCSBucket).Delete(ctx)
+		client.Close()
+	}, nil
+}
+
+// setupRealPubSub creates a topic and subscription on GCP for the test run.
+// It returns a cleanup function to delete them.
+func setupRealPubSub(t *testing.T, ctx context.Context, projectID, topicID, subID string) func() {
+	t.Helper()
+	client, err := pubsub.NewClient(ctx, projectID)
+	require.NoError(t, err, "Failed to create real Pub/Sub client")
+
+	topic := client.Topic(topicID)
+	exists, err := topic.Exists(ctx)
+	if err != nil {
+		return nil
+	}
+	if !exists {
+		topic, err = client.CreateTopic(ctx, topicID)
+		require.NoError(t, err, "Failed to create real Pub/Sub topic")
+		t.Logf("Created Cloud Pub/Sub Topic: %s", topic.ID())
+	} else {
+		t.Logf("Cloud Pub/Sub Topic: %s", topic.ID())
+	}
+
+	sub := client.Subscription(subID)
+	exists, err = sub.Exists(ctx)
+	if err != nil {
+		return nil
+	}
+	if !exists {
+		sub, err = client.CreateSubscription(ctx, subID, pubsub.SubscriptionConfig{
+			Topic:       topic,
+			AckDeadline: 20 * time.Second,
+		})
+		require.NoError(t, err, "Failed to create real Pub/Sub subscription")
+		t.Logf("Created Cloud Pub/Sub Subscription: %s", sub.ID())
+	} else {
+		t.Logf("Real Pub/Sub Subscription Exists: %s", sub.ID())
+	}
+
+	return func() {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		t.Logf("Tearing down Cloud Pub/Sub resources...")
+
+		subRef := client.Subscription(subID)
+		if err := subRef.Delete(cleanupCtx); err != nil {
+			t.Logf("Warning - failed to delete subscription '%s': %v", subID, err)
+		} else {
+			t.Logf("Deleted subscription '%s'", subID)
+		}
+
+		topicRef := client.Topic(topicID)
+		if err := topicRef.Delete(cleanupCtx); err != nil {
+			t.Logf("Warning - failed to delete topic '%s': %v", topicID, err)
+		} else {
+			t.Logf("Deleted topic '%s'", topicID)
+		}
+		client.Close()
+	}
 }

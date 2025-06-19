@@ -363,7 +363,7 @@ func startBQProcessingService(t *testing.T, ctx context.Context, gcpProjectID, s
 	bqClient, err := bigquery.NewClient(ctx, gcpProjectID)
 	require.NoError(t, err)
 
-	bqConsumer, err := consumers.NewGooglePubSubConsumer(ctx, &consumers.GooglePubSubConsumerConfig{
+	bqConsumer, err := consumers.NewGooglePubsubConsumer(ctx, &consumers.GooglePubsubConsumerConfig{
 		ProjectID:      bqCfg.ProjectID,
 		SubscriptionID: bqCfg.Consumer.SubscriptionID,
 	}, nil, bqLogger)

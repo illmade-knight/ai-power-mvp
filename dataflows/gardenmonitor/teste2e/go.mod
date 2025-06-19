@@ -10,7 +10,7 @@ require (
 	github.com/illmade-knight/ai-power-mvp/dataflows/gardenmonitor/bigquery v0.0.0
 	github.com/illmade-knight/ai-power-mvp/dataflows/gardenmonitor/icestore v0.0.0
 	github.com/illmade-knight/ai-power-mvp/dataflows/gardenmonitor/ingestion v0.0.0
-	github.com/illmade-knight/go-iot/pkg v0.0.0-20250619165059-2c07d2b3974f
+	github.com/illmade-knight/go-iot/pkg v0.0.0-20250619201927-3bee43e5001d
 	github.com/rs/zerolog v1.34.0
 	github.com/stretchr/testify v1.10.0
 	google.golang.org/api v0.238.0

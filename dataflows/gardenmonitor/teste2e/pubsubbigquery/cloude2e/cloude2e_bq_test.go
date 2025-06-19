@@ -44,8 +44,7 @@ const (
 	testMqttDeviceUID       = "GARDEN_MONITOR_CLOUD_001"
 	testMqttClientIDPrefix  = "ingestion-service-cloud"
 	bqDatasetDefaultTTLDays = 1 // Datasets created for tests will be auto-deleted after this many days
-	//cloudTestMqttHTTPPort   = ":9090"
-	//cloudTestBqHTTPPort     = ":9091"
+
 	cloudTestTimeout = 5 * time.Minute
 )
 
@@ -169,7 +168,7 @@ func TestE2E_Cloud_MqttToBigQueryFlow(t *testing.T) {
 	require.NoError(t, err, "Failed to create real BigQueryConfig client")
 	defer bqClient.Close()
 
-	bqConsumer, err := consumers.NewGooglePubSubConsumer(ctx, &consumers.GooglePubSubConsumerConfig{
+	bqConsumer, err := consumers.NewGooglePubsubConsumer(ctx, &consumers.GooglePubsubConsumerConfig{
 		ProjectID:      bqCfg.ProjectID,
 		SubscriptionID: bqCfg.Consumer.SubscriptionID,
 	}, make([]option.ClientOption, 0), bqLogger)
