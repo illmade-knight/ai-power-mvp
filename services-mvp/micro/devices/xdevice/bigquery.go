@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-// BigQueryInserterConfig holds configuration for the BigQuery inserter.
+// BigQueryInserterConfig holds configuration for the BigQueryConfig inserter.
 type BigQueryInserterConfig struct {
 	ProjectID       string
 	DatasetID       string
@@ -20,7 +20,7 @@ type BigQueryInserterConfig struct {
 	// EmulatorHost field was removed; client injection handles emulator specifics
 }
 
-// LoadBigQueryInserterConfigFromEnv loads BigQuery configuration from environment variables.
+// LoadBigQueryInserterConfigFromEnv loads BigQueryConfig configuration from environment variables.
 func LoadBigQueryInserterConfigFromEnv() (*BigQueryInserterConfig, error) {
 	cfg := &BigQueryInserterConfig{
 		ProjectID:       os.Getenv("GCP_PROJECT_ID"),
@@ -30,18 +30,18 @@ func LoadBigQueryInserterConfigFromEnv() (*BigQueryInserterConfig, error) {
 	}
 
 	if cfg.ProjectID == "" {
-		return nil, fmt.Errorf("GCP_PROJECT_ID environment variable not set for BigQuery config")
+		return nil, fmt.Errorf("GCP_PROJECT_ID environment variable not set for BigQueryConfig config")
 	}
 	if cfg.DatasetID == "" {
-		return nil, fmt.Errorf("BQ_DATASET_ID environment variable not set for BigQuery config")
+		return nil, fmt.Errorf("BQ_DATASET_ID environment variable not set for BigQueryConfig config")
 	}
 	if cfg.TableID == "" {
-		return nil, fmt.Errorf("BQ_TABLE_ID_METER_READINGS environment variable not set for BigQuery config")
+		return nil, fmt.Errorf("BQ_TABLE_ID_METER_READINGS environment variable not set for BigQueryConfig config")
 	}
 	return cfg, nil
 }
 
-// NewProductionBigQueryClient creates a BigQuery client suitable for production environments.
+// NewProductionBigQueryClient creates a BigQueryConfig client suitable for production environments.
 // It now accepts a BigQueryInserterConfig struct.
 func NewProductionBigQueryClient(ctx context.Context, cfg *BigQueryInserterConfig, logger zerolog.Logger) (*bigquery.Client, error) {
 	if cfg == nil {
@@ -54,21 +54,21 @@ func NewProductionBigQueryClient(ctx context.Context, cfg *BigQueryInserterConfi
 	var opts []option.ClientOption
 	if cfg.CredentialsFile != "" {
 		opts = append(opts, option.WithCredentialsFile(cfg.CredentialsFile))
-		logger.Info().Str("credentials_file", cfg.CredentialsFile).Msg("Using specified credentials file for production BigQuery client")
+		logger.Info().Str("credentials_file", cfg.CredentialsFile).Msg("Using specified credentials file for production BigQueryConfig client")
 	} else {
-		logger.Info().Msg("Using Application Default Credentials (ADC) for production BigQuery client")
+		logger.Info().Msg("Using Application Default Credentials (ADC) for production BigQueryConfig client")
 	}
 
 	client, err := bigquery.NewClient(ctx, cfg.ProjectID, opts...)
 	if err != nil {
-		logger.Error().Err(err).Str("project_id", cfg.ProjectID).Msg("Failed to create production BigQuery client")
+		logger.Error().Err(err).Str("project_id", cfg.ProjectID).Msg("Failed to create production BigQueryConfig client")
 		return nil, fmt.Errorf("bigquery.NewClient (production): %w", err)
 	}
-	logger.Info().Str("project_id", cfg.ProjectID).Msg("Production BigQuery client created successfully.")
+	logger.Info().Str("project_id", cfg.ProjectID).Msg("Production BigQueryConfig client created successfully.")
 	return client, nil
 }
 
-// BigQueryInserter implements DecodedDataInserter for Google BigQuery.
+// BigQueryInserter implements DecodedDataInserter for Google BigQueryConfig.
 type BigQueryInserter struct {
 	client    *bigquery.Client // Client is now injected
 	table     *bigquery.Table
@@ -79,7 +79,7 @@ type BigQueryInserter struct {
 	tableID   string
 }
 
-// NewBigQueryInserter creates a new inserter for MeterReading data into BigQuery.
+// NewBigQueryInserter creates a new inserter for MeterReading data into BigQueryConfig.
 // It now accepts a pre-configured *bigquery.Client.
 func NewBigQueryInserter(
 	ctx context.Context,
@@ -113,7 +113,7 @@ func NewBigQueryInserter(
 	meta, err := tableRef.Metadata(ctx)
 	if err != nil {
 		if strings.Contains(err.Error(), "notFound") {
-			logger.Warn().Str("dataset", cfg.DatasetID).Str("table", cfg.TableID).Msg("BigQuery table not found. Attempting to create with inferred schema from MeterReading.")
+			logger.Warn().Str("dataset", cfg.DatasetID).Str("table", cfg.TableID).Msg("BigQueryConfig table not found. Attempting to create with inferred schema from MeterReading.")
 			inferredSchema, inferErr := bigquery.InferSchema(telemetry.MeterReadingBQWrapper{})
 			if inferErr != nil {
 				// client.Close() // Client lifecycle is managed by the caller now
@@ -128,15 +128,15 @@ func NewBigQueryInserter(
 			}
 			if createErr := tableRef.Create(ctx, tableMetadata); createErr != nil {
 				// client.Close()
-				return nil, fmt.Errorf("failed to create BigQuery table %s.%s: %w", cfg.DatasetID, cfg.TableID, createErr)
+				return nil, fmt.Errorf("failed to create BigQueryConfig table %s.%s: %w", cfg.DatasetID, cfg.TableID, createErr)
 			}
-			logger.Info().Str("dataset", cfg.DatasetID).Str("table", cfg.TableID).Msg("BigQuery table created with inferred schema.")
+			logger.Info().Str("dataset", cfg.DatasetID).Str("table", cfg.TableID).Msg("BigQueryConfig table created with inferred schema.")
 		} else {
 			// client.Close()
-			return nil, fmt.Errorf("failed to get BigQuery table metadata for %s.%s: %w", cfg.DatasetID, cfg.TableID, err)
+			return nil, fmt.Errorf("failed to get BigQueryConfig table metadata for %s.%s: %w", cfg.DatasetID, cfg.TableID, err)
 		}
 	} else {
-		logger.Info().Str("dataset", cfg.DatasetID).Str("table", cfg.TableID).Interface("schema_length", len(meta.Schema)).Msg("BigQuery table metadata loaded.")
+		logger.Info().Str("dataset", cfg.DatasetID).Str("table", cfg.TableID).Interface("schema_length", len(meta.Schema)).Msg("BigQueryConfig table metadata loaded.")
 	}
 
 	return &BigQueryInserter{
@@ -150,20 +150,20 @@ func NewBigQueryInserter(
 	}, nil
 }
 
-// Insert streams a single MeterReading to BigQuery.
+// Insert streams a single MeterReading to BigQueryConfig.
 func (i *BigQueryInserter) Insert(ctx context.Context, r *telemetry.MeterReading) error {
 	w := telemetry.WrapMeterReadingForBQ(r)
 	itemsToInsert := []*telemetry.MeterReadingBQWrapper{w}
 	if err := i.inserter.Put(ctx, itemsToInsert); err != nil {
-		i.logger.Error().Err(err).Str("uid", w.Uid).Str("device_eui", w.DeviceEui).Msg("Failed to insert row into BigQuery")
+		i.logger.Error().Err(err).Str("uid", w.Uid).Str("device_eui", w.DeviceEui).Msg("Failed to insert row into BigQueryConfig")
 		if multiErr, ok := err.(bigquery.PutMultiError); ok {
 			for _, rowErr := range multiErr {
-				i.logger.Error().Str("row_index", fmt.Sprintf("%d", rowErr.RowIndex)).Msgf("BigQuery insert error for row: %v", rowErr.Errors)
+				i.logger.Error().Str("row_index", fmt.Sprintf("%d", rowErr.RowIndex)).Msgf("BigQueryConfig insert error for row: %v", rowErr.Errors)
 			}
 		}
 		return fmt.Errorf("bigquery Inserter.Put: %w", err)
 	}
-	i.logger.Debug().Str("uid", w.Uid).Str("device_eui", w.DeviceEui).Msg("Successfully inserted row into BigQuery")
+	i.logger.Debug().Str("uid", w.Uid).Str("device_eui", w.DeviceEui).Msg("Successfully inserted row into BigQueryConfig")
 	return nil
 }
 

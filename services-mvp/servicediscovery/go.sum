@@ -148,6 +148,7 @@ github.com/googleapis/gax-go/v2 v2.14.2 h1:eBLnkZ9635krYIPD+ag1USrOAI0Nr0QYF3+/3
 github.com/googleapis/gax-go/v2 v2.14.2/go.mod h1:ON64QhlJkhVtSqp4v1uaK92VyZ2gmvDQsweuyLV+8+w=
 github.com/illmade-knight/ai-power-mvp/gen/go/protos/telemetry v0.0.0-20250609090345-5c9523977e29 h1:PAI2ADIcBeIiRzwvToCGrG6AJZzWRZIEu3qpZwVJAio=
 github.com/illmade-knight/ai-power-mvp/gen/go/protos/telemetry v0.0.0-20250609090345-5c9523977e29/go.mod h1:V5tdbLclxMsct7GPvcthVOVxhfiIr7nSDHLF1rSSybk=
+github.com/illmade-knight/go-iot/pkg v0.0.0-20250619201927-3bee43e5001d/go.mod h1:auyAjnV4xjHLbtjela1bc0cBaWBuPPd34eTcL+SjFwE=
 github.com/klauspost/compress v1.17.4 h1:Ej5ixsIri7BrIjBkRZLTo6ghwrEtHFk7ijlczPW4fZ4=
 github.com/klauspost/compress v1.17.4/go.mod h1:/dCuZOvVtNoHsyb+cuJD3itjs3NbnF6KH9zAO4BDxPM=
 github.com/klauspost/cpuid/v2 v2.2.5 h1:0E5MSMDEoAulmXNFquVs//DdoomxaoTY1kUhbc/qbZg=
@@ -321,6 +322,7 @@ gonum.org/v1/gonum v0.12.0/go.mod h1:73TDxJfAAHeA8Mk9mf8NlIppyhQNo5GLTcYeqgo2lvY
 google.golang.org/api v0.236.0 h1:CAiEiDVtO4D/Qja2IA9VzlFrgPnK3XVMmRoJZlSWbc0=
 google.golang.org/api v0.236.0/go.mod h1:X1WF9CU2oTc+Jml1tiIxGmWFK/UZezdqEu09gcxZAj4=
 google.golang.org/api v0.237.0/go.mod h1:cOVEm2TpdAGHL2z+UwyS+kmlGr3bVWQQ6sYEqkKje50=
+google.golang.org/api v0.238.0/go.mod h1:cOVEm2TpdAGHL2z+UwyS+kmlGr3bVWQQ6sYEqkKje50=
 google.golang.org/appengine v1.1.0/go.mod h1:EbEs0AVv82hx2wNQdGPgUI5lhzA/G0D9YwlJXL52JkM=
 google.golang.org/appengine v1.4.0/go.mod h1:xpcJRLb0r/rnEns0DIKYYv+WjYCduHsrkT7/EB5XEv4=
 google.golang.org/genproto v0.0.0-20180817151627-c66870c02cf8/go.mod h1:JiN7NxoALGmiZfu7CAH4rXhgtRTLTxftemlI0sWmxmc=

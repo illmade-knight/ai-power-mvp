@@ -48,11 +48,11 @@ func main() {
 	err = gcsClient.Bucket(cfg.IceStore.BucketName).Create(ctx, cfg.ProjectID, nil)
 
 	// Create the Pub/Sub consumer using the shared consumers package.
-	consumerCfg := &consumers.GooglePubSubConsumerConfig{
+	consumerCfg := &consumers.GooglePubsubConsumerConfig{
 		ProjectID:      cfg.ProjectID,
 		SubscriptionID: cfg.Consumer.SubscriptionID,
 	}
-	consumer, err := consumers.NewGooglePubSubConsumer(ctx, consumerCfg, log.Logger)
+	consumer, err := consumers.NewGooglePubsubConsumer(ctx, consumerCfg, nil, log.Logger)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to create Pub/Sub consumer")
 	}

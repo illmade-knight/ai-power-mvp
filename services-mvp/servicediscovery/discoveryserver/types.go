@@ -23,7 +23,7 @@ type ServiceGCSBucketInfo struct {
 	DeclaredAccess []string `json:"declaredAccess,omitempty"`
 }
 
-// ServiceBigQueryTableInfo holds information about a BigQuery table a service accesses.
+// ServiceBigQueryTableInfo holds information about a BigQueryConfig table a service accesses.
 type ServiceBigQueryTableInfo struct {
 	ProjectID      string   `json:"projectId"`
 	DatasetID      string   `json:"datasetId"`

@@ -35,7 +35,7 @@ import (
 
 // --- Test Flags ---
 var (
-	keepDataset = flag.Bool("keep-dataset", false, "If true, the BigQuery dataset will not be deleted after the test, but will expire automatically after 1 day.")
+	keepDataset = flag.Bool("keep-dataset", false, "If true, the BigQueryConfig dataset will not be deleted after the test, but will expire automatically after 1 day.")
 )
 
 // --- Test Constants ---
@@ -46,8 +46,6 @@ const (
 	loadTestRatePerDevice  = 2.0
 	loadTestSuccessPercent = 0.98
 	cloudLoadTestTimeout   = 10 * time.Minute
-	testMosquittoImage     = "eclipse-mosquitto:2.0"
-	testMqttBrokerPort     = "1883/tcp"
 	testMqttTopicPattern   = "devices/+/data"
 	testMqttClientIDPrefix = "ingestion-service-cloud-load"
 	cloudTestMqttHTTPPort  = ":9092"
@@ -168,12 +166,12 @@ func TestManagedCloudLoad(t *testing.T) {
 	require.NotEmpty(t, provisioned.PubSubSubscriptions, "Provisioning must return a Pub/Sub subscription")
 	subscriptionID := provisioned.PubSubSubscriptions[0].Name
 
-	require.NotEmpty(t, provisioned.BigQueryTables, "Provisioning must return a BigQuery table")
+	require.NotEmpty(t, provisioned.BigQueryTables, "Provisioning must return a BigQueryConfig table")
 	datasetID := provisioned.BigQueryTables[0].Dataset
 	tableID := provisioned.BigQueryTables[0].Name
 
 	log.Info().Str("topic", topicID).Str("subscription", subscriptionID).Msg("Using Pub/Sub resources")
-	log.Info().Str("dataset", datasetID).Str("table", tableID).Msg("Using BigQuery resources")
+	log.Info().Str("dataset", datasetID).Str("table", tableID).Msg("Using BigQueryConfig resources")
 
 	// --- 5. Start Local Services & Load Generator ---
 	log.Info().Msg("LoadTest: Setting up Mosquitto container...")
@@ -223,7 +221,7 @@ func TestManagedCloudLoad(t *testing.T) {
 	}
 
 	// --- 6. Verification ---
-	log.Info().Msg("Load generation complete. Verifying results in BigQuery...")
+	log.Info().Msg("Load generation complete. Verifying results in BigQueryConfig...")
 	expectedMessages := int(float64(loadTestNumDevices) * loadTestRatePerDevice * loadTestDuration.Seconds())
 	successThreshold := int(float64(expectedMessages) * loadTestSuccessPercent)
 
@@ -244,7 +242,7 @@ VerificationLoop:
 	for {
 		select {
 		case <-verificationCtx.Done():
-			t.Fatalf("Test timed out waiting for BigQuery results. Last count: %d, Threshold: %d", lastRowCount, successThreshold)
+			t.Fatalf("Test timed out waiting for BigQueryConfig results. Last count: %d, Threshold: %d", lastRowCount, successThreshold)
 		case <-tick.C:
 			currentRowCount, err := getRowCount(verificationCtx, bqClient, datasetID, tableID)
 			if err != nil {
@@ -345,7 +343,7 @@ func startBQProcessingService(t *testing.T, ctx context.Context, gcpProjectID, s
 			SubscriptionID  string `mapstructure:"subscription_id"`
 			CredentialsFile string `mapstructure:"credentials_file"`
 		}{SubscriptionID: subID},
-		BigQuery: bqstore.BigQueryDatasetConfig{
+		BigQueryConfig: bqstore.BigQueryDatasetConfig{
 			ProjectID: gcpProjectID,
 			DatasetID: datasetID,
 			TableID:   tableID,
@@ -368,11 +366,11 @@ func startBQProcessingService(t *testing.T, ctx context.Context, gcpProjectID, s
 	bqConsumer, err := consumers.NewGooglePubSubConsumer(ctx, &consumers.GooglePubSubConsumerConfig{
 		ProjectID:      bqCfg.ProjectID,
 		SubscriptionID: bqCfg.Consumer.SubscriptionID,
-	}, bqLogger)
+	}, nil, bqLogger)
 	require.NoError(t, err)
 
 	// *** REFACTORED PART: Use the new, single convenience constructor ***
-	batchInserter, err := bqstore.NewBigQueryBatchProcessor[types.GardenMonitorReadings](ctx, bqClient, &bqCfg.BatchProcessing.BatchInserterConfig, &bqCfg.BigQuery.BigQueryDatasetConfig, bqLogger)
+	batchInserter, err := bqstore.NewBigQueryBatchProcessor[types.GardenMonitorReadings](ctx, bqClient, &bqCfg.BatchProcessing.BatchInserterConfig, &bqCfg.BigQueryConfig, bqLogger)
 	require.NoError(t, err)
 
 	// *** REFACTORED PART: Use the new service constructor ***

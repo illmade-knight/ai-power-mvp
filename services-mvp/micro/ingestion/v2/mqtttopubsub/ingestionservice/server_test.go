@@ -46,13 +46,12 @@ func TestNewServer(t *testing.T) {
 	mockCoreSvc := new(MockCoreIngestionService) // This is now a CoreService
 
 	validConfig := &Config{
-		ServiceName:                 "test-ingestion-svc",
-		Environment:                 "dev",
-		ServiceManagerAPIURL:        "http://localhost:8080",
-		HTTPPort:                    8081,
-		ShutdownTimeout:             5 * time.Second,
-		ExpectedEnrichedTopicID:     "enriched-topic",
-		ExpectedUnidentifiedTopicID: "unidentified-topic",
+		ServiceName:             "test-ingestion-svc",
+		Environment:             "dev",
+		ServiceManagerAPIURL:    "http://localhost:8080",
+		HTTPPort:                8081,
+		ShutdownTimeout:         5 * time.Second,
+		ExpectedEnrichedTopicID: "enriched-topic",
 	}
 
 	testCases := []struct {
@@ -69,7 +68,6 @@ func TestNewServer(t *testing.T) {
 		{"missing Environment", func() *Config { c := *validConfig; c.Environment = ""; return &c }(), mockCoreSvc, true, "server config: Environment is required"},
 		{"missing ServiceManagerAPIURL", func() *Config { c := *validConfig; c.ServiceManagerAPIURL = ""; return &c }(), mockCoreSvc, true, "server config: ServiceManagerAPIURL is required"},
 		{"missing ExpectedEnrichedTopicID", func() *Config { c := *validConfig; c.ExpectedEnrichedTopicID = ""; return &c }(), mockCoreSvc, true, "server config: ExpectedEnrichedTopicID is required"},
-		{"missing ExpectedUnidentifiedTopicID", func() *Config { c := *validConfig; c.ExpectedUnidentifiedTopicID = ""; return &c }(), mockCoreSvc, true, "server config: ExpectedUnidentifiedTopicID is required"},
 	}
 
 	for _, tc := range testCases {
@@ -91,7 +89,7 @@ func TestNewServer(t *testing.T) {
 
 func TestServer_HealthzHandler(t *testing.T) {
 	logger := zerolog.Nop()
-	cfg := &Config{HTTPPort: 8080, ServiceName: "test-svc", Environment: "test", ServiceManagerAPIURL: "http://dummy", ExpectedEnrichedTopicID: "t1", ExpectedUnidentifiedTopicID: "t2"}
+	cfg := &Config{HTTPPort: 8080, ServiceName: "test-svc", Environment: "test", ServiceManagerAPIURL: "http://dummy", ExpectedEnrichedTopicID: "t1"}
 	mockCoreSvc := new(MockCoreIngestionService)
 	server, err := NewServer(cfg, logger, mockCoreSvc) // Pass mockCoreSvc directly
 	require.NoError(t, err)
@@ -110,12 +108,11 @@ func TestServer_FetchAndValidateServiceManagerConfig(t *testing.T) {
 	mockCoreSvc := new(MockCoreIngestionService)
 
 	baseServerConfig := &Config{
-		ServiceName:                 "ingestion-service",
-		Environment:                 "test",
-		ExpectedEnrichedTopicID:     "enriched-messages",
-		ExpectedUnidentifiedTopicID: "unidentified-messages",
-		HTTPPort:                    8080,
-		ShutdownTimeout:             5 * time.Second,
+		ServiceName:             "ingestion-service",
+		Environment:             "test",
+		ExpectedEnrichedTopicID: "enriched-messages",
+		HTTPPort:                8080,
+		ShutdownTimeout:         5 * time.Second,
 	}
 
 	testCases := []struct {
@@ -256,13 +253,12 @@ func TestServer_StartAndStop(t *testing.T) {
 	defer mockSMServer.Close()
 
 	cfg := &Config{
-		ServiceName:                 "ingestion-service",
-		Environment:                 "test",
-		ServiceManagerAPIURL:        mockSMServer.URL,
-		HTTPPort:                    0,
-		ShutdownTimeout:             1 * time.Second,
-		ExpectedEnrichedTopicID:     "enriched-topic",
-		ExpectedUnidentifiedTopicID: "unidentified-topic",
+		ServiceName:             "ingestion-service",
+		Environment:             "test",
+		ServiceManagerAPIURL:    mockSMServer.URL,
+		HTTPPort:                0,
+		ShutdownTimeout:         1 * time.Second,
+		ExpectedEnrichedTopicID: "enriched-topic",
 	}
 
 	mockCoreSvc.On("Start").Return(nil).Once()
@@ -312,7 +308,7 @@ func TestServer_Run_SignalHandling(t *testing.T) {
 	cfg := &Config{
 		ServiceName: "sig-test-svc", Environment: "dev", ServiceManagerAPIURL: mockSMServer.URL,
 		HTTPPort: 0, ShutdownTimeout: 500 * time.Millisecond,
-		ExpectedEnrichedTopicID: "t1", ExpectedUnidentifiedTopicID: "t2",
+		ExpectedEnrichedTopicID: "t1",
 	}
 
 	mockCoreSvc.On("Start").Return(nil).Once()

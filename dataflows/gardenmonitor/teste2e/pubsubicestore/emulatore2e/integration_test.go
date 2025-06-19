@@ -76,7 +76,7 @@ func TestE2E_MqttToIceStoreFlow(t *testing.T) {
 	defer mosquittoCleanup()
 
 	log.Info().Msg("E2E: Setting up Pub/Sub emulator...")
-	pubsubOptions, pubsubCleanup := emulators.SetupPubSubEmulator(t, ctx, &emulators.PubsubConfig{
+	pubsubOptions, pubsubCleanup := emulators.SetupPubSubEmulator(t, ctx, emulators.PubsubConfig{
 		GCImageContainer: emulators.GCImageContainer{
 			ImageContainer: emulators.ImageContainer{
 				EmulatorImage:    testPubsubEmulatorImage,
@@ -124,7 +124,7 @@ func TestE2E_MqttToIceStoreFlow(t *testing.T) {
 	}
 
 	mqttLogger := log.With().Str("service", "mqtt-ingestion").Logger()
-	mqttPublisher, err := mqttconverter.NewGooglePubSubPublisher(ctx, &mqttconverter.GooglePubSubPublisherConfig{
+	mqttPublisher, err := mqttconverter.NewGooglePubsubPublisher(ctx, mqttconverter.GooglePubsubPublisherConfig{
 		ProjectID: mqttCfg.ProjectID,
 		TopicID:   mqttCfg.Publisher.TopicID,
 	}, mqttLogger)
@@ -143,7 +143,7 @@ func TestE2E_MqttToIceStoreFlow(t *testing.T) {
 	time.Sleep(2 * time.Second) // Give the server and MQTT client time to connect
 
 	// --- 3. Configure and Start IceStore Processing Service ---
-	bqCfg := &icinit.Config{
+	bqCfg := &icinit.IceServiceConfig{
 		LogLevel:  "debug",
 		HTTPPort:  e2eBqHTTPPort,
 		ProjectID: testProjectID,
@@ -194,7 +194,7 @@ func TestE2E_MqttToIceStoreFlow(t *testing.T) {
 
 	go func() {
 		if err := gcsServer.Start(); err != nil && err != http.ErrServerClosed {
-			t.Errorf("BigQuery Processing server failed: %v", err)
+			t.Errorf("BigQueryConfig Processing server failed: %v", err)
 		}
 	}()
 	defer gcsServer.Shutdown()
@@ -220,7 +220,7 @@ func TestE2E_MqttToIceStoreFlow(t *testing.T) {
 	require.NoError(t, token.Error())
 	log.Info().Msg("E2E: Published test message to MQTT.")
 
-	// --- 5. Verify Data in BigQuery using the correct polling method ---
+	// --- 5. Verify Data in BigQueryConfig using the correct polling method ---
 	var receivedRows []types.GardenMonitorReadings
 
 	verifyCtx, cancel := context.WithTimeout(context.Background(), time.Second*20)

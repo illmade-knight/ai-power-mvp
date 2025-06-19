@@ -3,12 +3,11 @@ package main
 import (
 	"flag"
 	"github.com/go-chi/chi/v5"
+	"github.com/illmade-knight/go-iot/pkg/servicemanager"
 	"net/http"
 	"os"
 	"servicediscovery/discoveryserver"
 	"time"
-
-	"github.com/illmade-knight/ai-power-mpv/pkg/servicemanager"
 
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/rs/zerolog"

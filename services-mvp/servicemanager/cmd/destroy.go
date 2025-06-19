@@ -25,7 +25,7 @@ var destroyCmd = &cobra.Command{
 	Use:   "destroy",
 	Short: "Destroy cloud resources based on the configuration for an environment",
 	Long: `The destroy command reads the specified YAML configuration file and
-attempts to delete the defined Google Cloud resources (Pub/Sub, BigQuery, GCS)
+attempts to delete the defined Google Cloud resources (Pub/Sub, BigQueryConfig, GCS)
 in the target environment.
 
 WARNING: This is a destructive operation.
@@ -110,16 +110,16 @@ this command will fail unless the --force flag is provided.`,
 			log.Info().Msg("GCS bucket teardown completed.")
 		}
 
-		// --- BigQuery Teardown ---
+		// --- BigQueryConfig Teardown ---
 		// Tables should be deleted before datasets. TeardownTables and TeardownDatasets in BigQueryManager handle this order.
-		log.Info().Msg("Starting BigQuery resource teardown...")
+		log.Info().Msg("Starting BigQueryConfig resource teardown...")
 		bqRealClient, err := bigquery.NewClient(ctx, actualProjectID, clientOpts...)
 		if err != nil {
-			return fmt.Errorf("failed to create real BigQuery client for project '%s': %w", actualProjectID, err)
+			return fmt.Errorf("failed to create real BigQueryConfig client for project '%s': %w", actualProjectID, err)
 		}
 		defer func() {
 			if err := bqRealClient.Close(); err != nil {
-				log.Error().Err(err).Msg("Failed to close BigQuery client")
+				log.Error().Err(err).Msg("Failed to close BigQueryConfig client")
 			}
 		}()
 		bqAdapter := initialization.NewBigQueryClientAdapter(bqRealClient)
@@ -128,9 +128,9 @@ this command will fail unless the --force flag is provided.`,
 			return fmt.Errorf("failed to create BigQueryManager: %w", err)
 		}
 		if err := bqManager.Teardown(ctx, cfg, environment); err != nil {
-			log.Error().Err(err).Msg("BigQuery teardown failed. Continuing with other resources.")
+			log.Error().Err(err).Msg("BigQueryConfig teardown failed. Continuing with other resources.")
 		} else {
-			log.Info().Msg("BigQuery resource teardown completed.")
+			log.Info().Msg("BigQueryConfig resource teardown completed.")
 		}
 
 		// --- Pub/Sub Teardown ---

@@ -198,7 +198,7 @@ func setupBigQueryEmulatorForCLI(t *testing.T, ctx context.Context, projectID st
 	t.Helper()
 	natPort, err := nat.NewPort("tcp", bigqueryEmulatorPortStringCLI)
 	if err != nil {
-		return nil, "", fmt.Errorf("creating nat.Port for BigQuery: %w", err)
+		return nil, "", fmt.Errorf("creating nat.Port for BigQueryConfig: %w", err)
 	}
 	datasetToPreCreate := "clitest_dataset_one"
 	req := testcontainers.ContainerRequest{
@@ -212,21 +212,21 @@ func setupBigQueryEmulatorForCLI(t *testing.T, ctx context.Context, projectID st
 	}
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{ContainerRequest: req, Started: true})
 	if err != nil {
-		return nil, "", fmt.Errorf("starting BigQuery emulator: %w. Request: %+v", err, req)
+		return nil, "", fmt.Errorf("starting BigQueryConfig emulator: %w. Request: %+v", err, req)
 	}
 
 	host, err := container.Host(ctx)
 	if err != nil {
 		container.Terminate(ctx)
-		return nil, "", fmt.Errorf("getting BigQuery emulator host: %w", err)
+		return nil, "", fmt.Errorf("getting BigQueryConfig emulator host: %w", err)
 	}
 	mappedPort, err := container.MappedPort(ctx, natPort)
 	if err != nil {
 		container.Terminate(ctx)
-		return nil, "", fmt.Errorf("getting BigQuery emulator mapped port: %w", err)
+		return nil, "", fmt.Errorf("getting BigQueryConfig emulator mapped port: %w", err)
 	}
 	endpoint := fmt.Sprintf("http://%s:%s", host, mappedPort.Port())
-	log.Info().Str("endpoint", endpoint).Str("projectID", projectID).Msg("BigQuery Emulator helper: started")
+	log.Info().Str("endpoint", endpoint).Str("projectID", projectID).Msg("BigQueryConfig Emulator helper: started")
 	return container, endpoint, nil
 }
 
@@ -278,7 +278,7 @@ func TestCLILifecycle(t *testing.T) {
 	t.Setenv("PUBSUB_EMULATOR_HOST", pubsubEmulatorEndpoint)
 
 	bqContainer, bqEmulatorEndpoint, err := setupBigQueryEmulatorForCLI(t, ctx, cliTestProjectID)
-	require.NoError(t, err, "BigQuery emulator setup failed")
+	require.NoError(t, err, "BigQueryConfig emulator setup failed")
 	defer func() { require.NoError(t, bqContainer.Terminate(ctx)) }()
 	t.Setenv("BIGQUERY_API_ENDPOINT", bqEmulatorEndpoint)
 

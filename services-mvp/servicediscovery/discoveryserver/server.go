@@ -2,9 +2,8 @@ package discoveryserver
 
 import (
 	"encoding/json"
+	"github.com/illmade-knight/go-iot/pkg/servicemanager"
 	"net/http"
-
-	"github.com/illmade-knight/ai-power-mpv/pkg/servicemanager"
 
 	"github.com/rs/zerolog"
 )

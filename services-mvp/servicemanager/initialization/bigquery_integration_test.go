@@ -6,7 +6,7 @@ import (
 	"context"
 	"fmt"
 	telemetry "github.com/illmade-knight/ai-power-mvp/gen/go/protos/telemetry"
-	"github.com/illmade-knight/ai-power-mvp/services-mvp/servicemanager"
+	"github.com/illmade-knight/go-iot/pkg/servicemanager"
 	"net/http"
 	"os"
 	"strings"
@@ -27,7 +27,7 @@ import (
 )
 
 const (
-	// BigQuery Emulator Test Config for Service Manager
+	// BigQueryConfig Emulator Test Config for Service Manager
 	testSMBQEmulatorImage       = "ghcr.io/goccy/bigquery-emulator:0.6.6"
 	testSMBQEmulatorGRPCPortStr = "9060"
 	testSMBQEmulatorRestPortStr = "9050"
@@ -44,7 +44,7 @@ const (
 	dummySubForValidationIntegration   = "dummy-sub-for-sm-bq-integration-test"
 )
 
-// newEmulatorBQClient creates a BigQuery client configured for the emulator,
+// newEmulatorBQClient creates a BigQueryConfig client configured for the emulator,
 // primarily using settings that work for REST-based metadata operations.
 // It relies on GOOGLE_CLOUD_PROJECT and BIGQUERY_API_ENDPOINT (the REST endpoint)
 // environment variables being set by the caller (using t.Setenv).
@@ -66,7 +66,7 @@ func newEmulatorBQClient(ctx context.Context, t *testing.T, projectID string) *b
 	}
 
 	client, err := bigquery.NewClient(ctx, projectID, clientOpts...)
-	require.NoError(t, err, "newEmulatorBQClient: Failed to create BigQuery client. Project: %s, RESTHost: %s", projectID, emulatorRESTHost)
+	require.NoError(t, err, "newEmulatorBQClient: Failed to create BigQueryConfig client. Project: %s, RESTHost: %s", projectID, emulatorRESTHost)
 	return client
 }
 
@@ -87,7 +87,7 @@ func setupBigQueryEmulatorForManagerTest(t *testing.T, ctx context.Context) (emu
 		),
 	}
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{ContainerRequest: req, Started: true})
-	require.NoError(t, err, "Failed to start BigQuery emulator container for manager test")
+	require.NoError(t, err, "Failed to start BigQueryConfig emulator container for manager test")
 
 	host, err := container.Host(ctx)
 	require.NoError(t, err)
@@ -95,14 +95,14 @@ func setupBigQueryEmulatorForManagerTest(t *testing.T, ctx context.Context) (emu
 	grpcMappedPort, err := container.MappedPort(ctx, testSMBQEmulatorGRPCPort)
 	require.NoError(t, err)
 	emulatorGRPCHost = fmt.Sprintf("%s:%s", host, grpcMappedPort.Port())
-	t.Logf("BigQuery emulator container started, gRPC on: %s", emulatorGRPCHost)
+	t.Logf("BigQueryConfig emulator container started, gRPC on: %s", emulatorGRPCHost)
 
 	restMappedPort, err := container.MappedPort(ctx, testSMBQEmulatorRestPort)
 	require.NoError(t, err)
 	emulatorRESTHost = fmt.Sprintf("http://%s:%s", host, restMappedPort.Port())
-	t.Logf("BigQuery emulator container started, REST on: %s", emulatorRESTHost)
+	t.Logf("BigQueryConfig emulator container started, REST on: %s", emulatorRESTHost)
 
-	// Set environment variables *before* creating any BigQuery clients
+	// Set environment variables *before* creating any BigQueryConfig clients
 	t.Setenv("GOOGLE_CLOUD_PROJECT", testSMBQProjectID)
 	t.Setenv("BIGQUERY_EMULATOR_HOST", emulatorGRPCHost) // For gRPC based API calls by client library
 	t.Setenv("BIGQUERY_API_ENDPOINT", emulatorRESTHost)  // For REST based API calls by client library
@@ -121,10 +121,10 @@ func setupBigQueryEmulatorForManagerTest(t *testing.T, ctx context.Context) (emu
 		if !strings.Contains(err.Error(), "Already Exists") {
 			require.NoError(t, err, "Failed to create dataset '%s' on BQ emulator.", testSMBQAdminDatasetID)
 		} else {
-			t.Logf("BigQuery dataset '%s' already exists on emulator.", testSMBQAdminDatasetID)
+			t.Logf("BigQueryConfig dataset '%s' already exists on emulator.", testSMBQAdminDatasetID)
 		}
 	} else {
-		t.Logf("Created BigQuery dataset '%s' on emulator", testSMBQDatasetID)
+		t.Logf("Created BigQueryConfig dataset '%s' on emulator", testSMBQDatasetID)
 	}
 
 	// Table creation is now handled by the manager's Setup call in the test itself.
@@ -194,7 +194,7 @@ resources:
 		testSMBQDatasetID, testSMBQAnotherDatasetID,
 		testSMBQTableID, testSMBQDatasetID, yamlTimePartitioningField, yamlClusteringFields[0], yamlClusteringFields[1])
 
-	configFilePath := servicemanager.createManagerTestYAMLFile(t, yamlContent) // Assumes this helper is available in the package
+	configFilePath := servicemanager.CreateManagerTestYAMLFile(t, yamlContent) // Assumes this helper is available in the package
 
 	cfg, err := LoadAndValidateConfig(configFilePath)
 	require.NoError(t, err, "Failed to load and validate test config")

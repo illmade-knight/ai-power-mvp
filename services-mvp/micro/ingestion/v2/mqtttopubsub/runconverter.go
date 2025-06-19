@@ -5,7 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/illmade-knight/ai-power-mvp/services-mvp/mqtttopubsub/converter"
+	"github.com/illmade-knight/ai-power-mvp/services-mvp/ingestion/mqtttopubsub/converter"
 	"os"
 	"os/signal"
 	"syscall"

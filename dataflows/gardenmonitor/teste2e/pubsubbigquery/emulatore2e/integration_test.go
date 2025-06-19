@@ -49,7 +49,7 @@ const (
 	testPubsubTopicID        = "garden-monitor-processed"     // Ingestion publishes here
 	testPubsubSubscriptionID = "garden-monitor-processed-sub" // Processing subscribes here
 
-	// BigQuery -> BigQuery Service
+	// BigQueryConfig -> BigQueryConfig Service
 	e2eBigQueryDatasetID = "garden_e2e_dataset"
 	e2eBigQueryTableID   = "monitor_payloads_e2e"
 
@@ -76,8 +76,8 @@ func TestE2E_MqttToBigQueryFlow(t *testing.T) {
 	pubsubOptions, pubsubCleanup := emulators.SetupPubSubEmulator(t, ctx, pubsubCfg)
 	defer pubsubCleanup()
 
-	log.Info().Msg("E2E: Setting up BigQuery emulator...")
-	bqCfg := emulators.GetDefaultConfig(testProjectID, map[string]string{e2eBigQueryDatasetID: e2eBigQueryTableID}, map[string]interface{}{e2eBigQueryTableID: types.GardenMonitorReadings{}})
+	log.Info().Msg("E2E: Setting up BigQueryConfig emulator...")
+	bqCfg := emulators.GetDefaultBigQueryConfig(testProjectID, map[string]string{e2eBigQueryDatasetID: e2eBigQueryTableID}, map[string]interface{}{e2eBigQueryTableID: types.GardenMonitorReadings{}})
 	bqOptions, bqCleanup := emulators.SetupBigQueryEmulator(t, ctx, bqCfg)
 	defer bqCleanup()
 
@@ -130,7 +130,7 @@ func TestE2E_MqttToBigQueryFlow(t *testing.T) {
 	defer mqttServer.Shutdown()
 	time.Sleep(2 * time.Second) // Give the server and MQTT client time to connect
 
-	// --- 3. Configure and Start BigQuery Processing Service ---
+	// --- 3. Configure and Start BigQueryConfig Processing Service ---
 	bqInitCfg := &bqinit.Config{
 		LogLevel:  "debug",
 		HTTPPort:  e2eBqHTTPPort,
@@ -139,7 +139,7 @@ func TestE2E_MqttToBigQueryFlow(t *testing.T) {
 			SubscriptionID  string `mapstructure:"subscription_id"`
 			CredentialsFile string `mapstructure:"credentials_file"`
 		}{SubscriptionID: testPubsubSubscriptionID},
-		BigQuery: bqstore.BigQueryDatasetConfig{
+		BigQueryConfig: bqstore.BigQueryDatasetConfig{
 			ProjectID: testProjectID,
 			DatasetID: e2eBigQueryDatasetID,
 			TableID:   e2eBigQueryTableID,
@@ -167,7 +167,7 @@ func TestE2E_MqttToBigQueryFlow(t *testing.T) {
 	require.NoError(t, err)
 
 	// *** REFACTORED PART: Use the new, single convenience constructor ***
-	batchInserter, err := bqstore.NewBigQueryBatchProcessor[types.GardenMonitorReadings](ctx, bqClient, &bqInitCfg.BatchProcessing.BatchInserterConfig, &bqInitCfg.BigQuery, bqLogger)
+	batchInserter, err := bqstore.NewBigQueryBatchProcessor[types.GardenMonitorReadings](ctx, bqClient, &bqInitCfg.BatchProcessing.BatchInserterConfig, &bqInitCfg.BigQueryConfig, bqLogger)
 	require.NoError(t, err)
 
 	// *** REFACTORED PART: Use the new service constructor ***
@@ -178,7 +178,7 @@ func TestE2E_MqttToBigQueryFlow(t *testing.T) {
 
 	go func() {
 		if err := bqServer.Start(); err != nil && err != http.ErrServerClosed {
-			t.Errorf("BigQuery Processing server failed: %v", err)
+			t.Errorf("BigQueryConfig Processing server failed: %v", err)
 		}
 	}()
 	defer bqServer.Shutdown()
@@ -204,7 +204,7 @@ func TestE2E_MqttToBigQueryFlow(t *testing.T) {
 	require.NoError(t, token.Error())
 	log.Info().Msg("E2E: Published test message to MQTT.")
 
-	// --- 5. Verify Data in BigQuery using the correct polling method ---
+	// --- 5. Verify Data in BigQueryConfig using the correct polling method ---
 	var receivedRows []types.GardenMonitorReadings
 	var lastQueryErr error
 	timeout := time.After(30 * time.Second)
@@ -215,7 +215,7 @@ VerificationLoop:
 	for {
 		select {
 		case <-timeout:
-			t.Fatalf("Test timed out waiting for BigQuery results. Last error: %v", lastQueryErr)
+			t.Fatalf("Test timed out waiting for BigQueryConfig results. Last error: %v", lastQueryErr)
 		case <-tick.C:
 			queryString := fmt.Sprintf("SELECT * FROM `%s.%s` WHERE uid = @uid", e2eBigQueryDatasetID, e2eBigQueryTableID)
 			query := bqClient.Query(queryString)

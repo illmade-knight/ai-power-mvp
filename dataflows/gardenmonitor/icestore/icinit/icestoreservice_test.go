@@ -3,20 +3,25 @@ package icinit_test
 import (
 	"context"
 	"github.com/illmade-knight/ai-power-mvp/dataflows/gardenmonitor/icestore/icinit"
+	"github.com/illmade-knight/go-iot/pkg/consumers"
+	"github.com/illmade-knight/go-iot/pkg/helpers/emulators"
+	"github.com/illmade-knight/go-iot/pkg/icestore"
+	"github.com/rs/zerolog"
+	"github.com/stretchr/testify/require"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
-
-	"github.com/illmade-knight/go-iot/pkg/bqstore"
-	"github.com/illmade-knight/go-iot/pkg/consumers"
-	"github.com/illmade-knight/go-iot/pkg/types"
-	"github.com/rs/zerolog"
-	"github.com/stretchr/testify/require"
 )
 
-// NOTE: This test assumes the test mocks (MockMessageConsumer, etc.)
-// have been moved to a shared test helper file.
+const (
+	testProjectID  = "icestore-test-project"
+	testTopicID    = "icestore-test-topic"
+	testBucketName = "icestore-test-bucket"
+
+	testBatchSize    = 5
+	testFlushTimeout = time.Second * 10
+)
 
 // MockInserter is a no-op inserter that implements bqstore.DataBatchInserter
 type MockInserter[T any] struct{}
@@ -29,32 +34,30 @@ func TestServerStartup(t *testing.T) {
 	// --- Setup ---
 	logger := zerolog.Nop()
 
-	// Config can be empty for this test as we aren't using the port from it.
-	cfg := &icinit.Config{}
+	ctx := context.Background()
+
+	// IceServiceConfig can be empty for this test as we aren't using the port from it.
+	gcsConfig := emulators.GetDefaultGCSConfig(testProjectID, testBucketName)
+	gcsClient, gcsCleanup := emulators.SetupGCSEmulator(t, ctx, gcsConfig)
+	defer gcsCleanup()
 
 	// Create mocks for the service dependencies.
 	// Correctly instantiate the mock consumer using its constructor.
 	mockConsumer := consumers.NewMockMessageConsumer(1) // Assumes this is defined in a shared test helper file
-	mockInserter := &MockInserter[types.GardenMonitorReadings]{}
-	mockDecoder := func(payload []byte) (*types.GardenMonitorReadings, error) { return nil, nil }
 
-	batcher := bqstore.NewBatcher[types.GardenMonitorReadings](
-		&bqstore.BatchInserterConfig{BatchSize: 1, FlushTimeout: 1 * time.Second},
-		mockInserter,
-		logger,
-	)
-
-	// Use the new, clean constructor to create the processing service.
-	processingService, err := bqstore.NewBigQueryService[types.GardenMonitorReadings](
-		1, // numWorkers
-		mockConsumer,
-		batcher,
-		mockDecoder,
+	batcher, err := icestore.NewGCSBatchProcessor(
+		icestore.NewGCSClientAdapter(gcsClient),
+		&icestore.BatcherConfig{BatchSize: testBatchSize, FlushTimeout: testFlushTimeout},
+		icestore.GCSBatchUploaderConfig{BucketName: testBucketName, ObjectPrefix: "archived-data"},
 		logger,
 	)
 	require.NoError(t, err)
 
-	server := icinit.NewServer(cfg, processingService, logger)
+	service, err := icestore.NewIceStorageService(2, mockConsumer, batcher, icestore.ArchivalTransformer, logger)
+	require.NoError(t, err)
+
+	cfg := &icinit.IceServiceConfig{}
+	processingService := icinit.NewServer(cfg, service, logger)
 
 	// Start the non-HTTP parts of the service in a goroutine.
 	go func() {
@@ -64,13 +67,13 @@ func TestServerStartup(t *testing.T) {
 			t.Logf("processingService.Start() returned an error on shutdown: %v", err)
 		}
 	}()
-	t.Cleanup(processingService.Stop) // Ensure the processing service is stopped.
+	t.Cleanup(processingService.Shutdown) // Ensure the processing service is stopped.
 
 	// --- Test Execution: Start the service and test the HTTP handler ---
 	// We don't call server.Start() directly because it blocks on ListenAndServe.
 	// Instead, we use the standard library's httptest package to test the handler.
 	// This gives us a test server with a known URL and lifecycle.
-	testHttpServer := httptest.NewServer(server.GetHandler())
+	testHttpServer := httptest.NewServer(processingService.GetHandler())
 	defer testHttpServer.Close()
 
 	// --- Verification ---

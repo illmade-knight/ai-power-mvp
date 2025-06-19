@@ -10,16 +10,16 @@ import (
 	"github.com/spf13/viper"
 )
 
-// Config holds all configuration for the application.
+// IceServiceConfig holds all configuration for the application.
 // It's structured to neatly group settings for different components.
-type Config struct {
+type IceServiceConfig struct {
 	// LogLevel for the application-wide logger (e.g., "debug", "info", "warn", "error").
 	LogLevel string `mapstructure:"log_level"`
 
 	// HTTPPort is the port for the health check server.
 	HTTPPort string `mapstructure:"http_port"`
 
-	// GCP project ID, used by both Pub/Sub and BigQuery clients.
+	// GCP project ID, used by both Pub/Sub and BigQueryConfig clients.
 	ProjectID string `mapstructure:"project_id"`
 
 	// Consumer holds settings for the Pub/Sub subscriber.
@@ -43,7 +43,7 @@ type Config struct {
 
 // LoadConfig initializes and loads the application configuration.
 // It sets defaults, binds command-line flags, and reads from a config file.
-func LoadConfig() (*Config, error) {
+func LoadConfig() (*IceServiceConfig, error) {
 	v := viper.New()
 
 	// --- 1. Set Defaults ---
@@ -65,8 +65,8 @@ func LoadConfig() (*Config, error) {
 	pflag.String("log-level", "", "Log level (debug, info, warn, error)")
 	pflag.String("project-id", "", "GCP Project ID")
 	pflag.String("subscription-id", "", "Pub/Sub Subscription ID")
-	//pflag.String("bq-dataset-id", "", "BigQuery Dataset ID")
-	//pflag.String("bq-table-id", "", "BigQuery Table ID")
+	//pflag.String("bq-dataset-id", "", "BigQueryConfig Dataset ID")
+	//pflag.String("bq-table-id", "", "BigQueryConfig Table ID")
 	pflag.Parse()
 	err := v.BindPFlags(pflag.CommandLine)
 	if err != nil {
@@ -95,7 +95,7 @@ func LoadConfig() (*Config, error) {
 	v.AutomaticEnv()
 
 	// --- 5. Unmarshal config into our struct ---
-	var cfg Config
+	var cfg IceServiceConfig
 	// Manually map flag values to the struct fields where names differ.
 	cfg.LogLevel = v.GetString("log-level")
 	cfg.ProjectID = v.GetString("project-id")

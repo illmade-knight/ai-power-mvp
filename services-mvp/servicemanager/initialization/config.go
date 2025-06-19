@@ -61,12 +61,12 @@ func LoadAndValidateConfig(configPath string) (*TopLevelConfig, error) {
 		}
 	}
 
-	// Further validation for other resource types (BigQuery, GCS) can be added here as needed.
+	// Further validation for other resource types (BigQueryConfig, GCS) can be added here as needed.
 	// For "service definitions" check, we're ensuring that core communication infrastructure (topics/subs)
 	// is defined. If "services" were an explicit top-level key in your YAML, we'd check that too.
 	// Given the current YAML, checking for Pub/Sub resources covers a key aspect of service interaction.
 
-	// Example: Check if at least one BigQuery dataset is defined if it's critical
+	// Example: Check if at least one BigQueryConfig dataset is defined if it's critical
 	// if len(config.Resources.BigQueryDatasets) == 0 {
 	// 	return nil, fmt.Errorf("validation error: no bigquery_datasets defined")
 	// }

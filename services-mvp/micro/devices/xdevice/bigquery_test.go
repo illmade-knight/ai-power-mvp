@@ -170,7 +170,7 @@ func TestExampleProcessor_ProcessAndStore(t *testing.T) {
 }
 
 // Note: The actual BigQueryInserter implementation (NewBigQueryInserter, its Insert, and Close methods)
-// would be tested more thoroughly with integration tests using the BigQuery emulator or a dedicated test project,
+// would be tested more thoroughly with integration tests using the BigQueryConfig emulator or a dedicated test project,
 // as mocking the concrete Google Cloud client libraries at a low level is complex and often less valuable
 // than testing the real interaction. This file now focuses on unit testing components that *use* the
 // DecodedDataInserter interface.

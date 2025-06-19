@@ -1,8 +1,8 @@
 package bqinit_test
 
 import (
-	"bigquery/bqinit"
 	"context"
+	"github.com/illmade-knight/ai-power-mvp/dataflows/gardenmonitor/bigquery/bqinit"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -36,7 +36,6 @@ func TestServerStartup(t *testing.T) {
 	// Correctly instantiate the mock consumer using its constructor.
 	mockConsumer := consumers.NewMockMessageConsumer(1) // Assumes this is defined in a shared test helper file
 	mockInserter := &MockInserter[types.GardenMonitorReadings]{}
-	mockDecoder := func(payload []byte) (*types.GardenMonitorReadings, error) { return nil, nil }
 
 	batcher := bqstore.NewBatcher[types.GardenMonitorReadings](
 		&bqstore.BatchInserterConfig{BatchSize: 1, FlushTimeout: 1 * time.Second},
@@ -49,7 +48,7 @@ func TestServerStartup(t *testing.T) {
 		1, // numWorkers
 		mockConsumer,
 		batcher,
-		mockDecoder,
+		types.ConsumedMessageTransformer,
 		logger,
 	)
 	require.NoError(t, err)

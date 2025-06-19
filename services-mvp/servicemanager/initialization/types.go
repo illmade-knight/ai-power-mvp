@@ -34,7 +34,7 @@ type BigQueryDataset struct {
 	Labels      map[string]string `yaml:"labels,omitempty"`
 }
 
-// BigQueryTable defines the configuration for a BigQuery table.
+// BigQueryTable defines the configuration for a BigQueryConfig table.
 type BigQueryTable struct {
 	Name                   string   `yaml:"name"`
 	Dataset                string   `yaml:"dataset"`

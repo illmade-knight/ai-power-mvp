@@ -15,7 +15,7 @@ import (
 	// "google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// --- BigQuery Client Abstraction Interfaces ---
+// --- BigQueryConfig Client Abstraction Interfaces ---
 type BQTable interface {
 	Metadata(ctx context.Context) (*bigquery.TableMetadata, error)
 	Create(ctx context.Context, meta *bigquery.TableMetadata) error
@@ -34,7 +34,7 @@ type BQClient interface {
 	Close() error
 }
 
-// --- Adapters for real BigQuery client ---
+// --- Adapters for real BigQueryConfig client ---
 type bqTableClientAdapter struct{ table *bigquery.Table }
 
 func (a *bqTableClientAdapter) Metadata(ctx context.Context) (*bigquery.TableMetadata, error) {
@@ -80,7 +80,7 @@ var _ BQTable = &bqTableClientAdapter{}
 var _ BQDataset = &bqDatasetClientAdapter{}
 var _ BQClient = &bqClientAdapter{}
 
-// BigQueryManager handles the creation and deletion of BigQuery datasets and tables.
+// BigQueryManager handles the creation and deletion of BigQueryConfig datasets and tables.
 type BigQueryManager struct {
 	client         BQClient
 	logger         zerolog.Logger
@@ -90,7 +90,7 @@ type BigQueryManager struct {
 // NewBigQueryManager creates a new BigQueryManager with an injected BQClient interface.
 func NewBigQueryManager(client BQClient, logger zerolog.Logger, knownSchemas map[string]interface{}) (*BigQueryManager, error) {
 	if client == nil {
-		return nil, fmt.Errorf("BigQuery client (BQClient interface) cannot be nil")
+		return nil, fmt.Errorf("BigQueryConfig client (BQClient interface) cannot be nil")
 	}
 	if knownSchemas == nil {
 		knownSchemas = make(map[string]interface{})
@@ -108,16 +108,16 @@ func NewBigQueryManager(client BQClient, logger zerolog.Logger, knownSchemas map
 
 // GetTargetProjectID, TopLevelConfig, etc. are assumed to be defined elsewhere in the package.
 
-// Setup creates all configured BigQuery datasets and tables for a given environment.
+// Setup creates all configured BigQueryConfig datasets and tables for a given environment.
 func (m *BigQueryManager) Setup(ctx context.Context, cfg *TopLevelConfig, environment string) error {
 	targetProjectID, err := GetTargetProjectID(cfg, environment)
 	if err != nil {
 		return fmt.Errorf("BigQueryManager.Setup: %w", err)
 	}
 	if m.client.Project() != targetProjectID {
-		return fmt.Errorf("injected BigQuery client is for project '%s', but setup is targeted for project '%s'", m.client.Project(), targetProjectID)
+		return fmt.Errorf("injected BigQueryConfig client is for project '%s', but setup is targeted for project '%s'", m.client.Project(), targetProjectID)
 	}
-	m.logger.Info().Str("project_id", targetProjectID).Str("environment", environment).Msg("Starting BigQuery setup using injected client")
+	m.logger.Info().Str("project_id", targetProjectID).Str("environment", environment).Msg("Starting BigQueryConfig setup using injected client")
 	defaultLocation := cfg.DefaultLocation
 	if envSpec, ok := cfg.Environments[environment]; ok && envSpec.DefaultLocation != "" {
 		defaultLocation = envSpec.DefaultLocation
@@ -128,12 +128,12 @@ func (m *BigQueryManager) Setup(ctx context.Context, cfg *TopLevelConfig, enviro
 	if err := m.setupTables(ctx, m.client, cfg.Resources.BigQueryTables, targetProjectID); err != nil {
 		return err
 	}
-	m.logger.Info().Str("project_id", targetProjectID).Str("environment", environment).Msg("BigQuery setup completed successfully")
+	m.logger.Info().Str("project_id", targetProjectID).Str("environment", environment).Msg("BigQueryConfig setup completed successfully")
 	return nil
 }
 
 func (m *BigQueryManager) setupDatasets(ctx context.Context, client BQClient, datasetsToCreate []BigQueryDataset, defaultLocation, projectID string) error {
-	m.logger.Info().Int("count", len(datasetsToCreate)).Msg("Setting up BigQuery datasets...")
+	m.logger.Info().Int("count", len(datasetsToCreate)).Msg("Setting up BigQueryConfig datasets...")
 	for _, dsCfg := range datasetsToCreate {
 		if dsCfg.Name == "" {
 			m.logger.Error().Msg("Skipping dataset with empty name")
@@ -150,7 +150,7 @@ func (m *BigQueryManager) setupDatasets(ctx context.Context, client BQClient, da
 				} else if defaultLocation != "" {
 					meta.Location = defaultLocation
 				} else {
-					m.logger.Warn().Str("dataset_id", dsCfg.Name).Msg("Dataset location not specified, relying on BigQuery defaults.")
+					m.logger.Warn().Str("dataset_id", dsCfg.Name).Msg("Dataset location not specified, relying on BigQueryConfig defaults.")
 				}
 				if err := dataset.Create(ctx, meta); err != nil {
 					return fmt.Errorf("failed to create dataset '%s': %w", dsCfg.Name, err)
@@ -180,7 +180,7 @@ func (m *BigQueryManager) setupDatasets(ctx context.Context, client BQClient, da
 }
 
 func (m *BigQueryManager) setupTables(ctx context.Context, client BQClient, tablesToCreate []BigQueryTable, projectID string) error {
-	m.logger.Info().Int("count", len(tablesToCreate)).Msg("Setting up BigQuery tables...")
+	m.logger.Info().Int("count", len(tablesToCreate)).Msg("Setting up BigQueryConfig tables...")
 	for _, tableCfg := range tablesToCreate {
 		if tableCfg.Name == "" || tableCfg.Dataset == "" {
 			m.logger.Error().Str("table_name", tableCfg.Name).Str("dataset_name", tableCfg.Dataset).Msg("Skipping table with empty name or dataset")
@@ -270,7 +270,7 @@ func (m *BigQueryManager) Teardown(ctx context.Context, cfg *TopLevelConfig, env
 	if m.client.Project() != targetProjectID {
 		return fmt.Errorf("injected client project '%s' != target project '%s'", m.client.Project(), targetProjectID)
 	}
-	m.logger.Info().Str("project_id", targetProjectID).Str("environment", environment).Msg("Starting BigQuery teardown")
+	m.logger.Info().Str("project_id", targetProjectID).Str("environment", environment).Msg("Starting BigQueryConfig teardown")
 	if envSpec, ok := cfg.Environments[environment]; ok && envSpec.TeardownProtection {
 		return fmt.Errorf("teardown protection enabled for: %s", environment)
 	}
@@ -280,13 +280,13 @@ func (m *BigQueryManager) Teardown(ctx context.Context, cfg *TopLevelConfig, env
 	if err := m.teardownDatasets(ctx, m.client, cfg.Resources.BigQueryDatasets); err != nil {
 		return err
 	}
-	m.logger.Info().Str("project_id", targetProjectID).Msg("BigQuery teardown completed")
+	m.logger.Info().Str("project_id", targetProjectID).Msg("BigQueryConfig teardown completed")
 	return nil
 }
 
 // teardownTables (remains the same)
 func (m *BigQueryManager) teardownTables(ctx context.Context, client BQClient, tablesToTeardown []BigQueryTable) error {
-	m.logger.Info().Int("count", len(tablesToTeardown)).Msg("Tearing down BigQuery tables...")
+	m.logger.Info().Int("count", len(tablesToTeardown)).Msg("Tearing down BigQueryConfig tables...")
 	for i := len(tablesToTeardown) - 1; i >= 0; i-- {
 		tableCfg := tablesToTeardown[i]
 		if tableCfg.Name == "" || tableCfg.Dataset == "" {
@@ -309,7 +309,7 @@ func (m *BigQueryManager) teardownTables(ctx context.Context, client BQClient, t
 
 // teardownDatasets (remains the same)
 func (m *BigQueryManager) teardownDatasets(ctx context.Context, client BQClient, datasetsToTeardown []BigQueryDataset) error {
-	m.logger.Info().Int("count", len(datasetsToTeardown)).Msg("Tearing down BigQuery datasets...")
+	m.logger.Info().Int("count", len(datasetsToTeardown)).Msg("Tearing down BigQueryConfig datasets...")
 	for i := len(datasetsToTeardown) - 1; i >= 0; i-- {
 		dsCfg := datasetsToTeardown[i]
 		if dsCfg.Name == "" {

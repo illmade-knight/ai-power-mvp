@@ -20,7 +20,7 @@ var applyCmd = &cobra.Command{
 	Short: "Apply the configuration to provision or update cloud resources",
 	Long: `The apply command reads the specified YAML configuration file and
 provisions or updates the defined Google Cloud resources (Pub/Sub topics,
-subscriptions, BigQuery datasets/tables, GCS buckets) in the
+subscriptions, BigQueryConfig datasets/tables, GCS buckets) in the
 target environment.
 
 It aims to be idempotent, meaning running it multiple times with the
@@ -76,15 +76,15 @@ same configuration should result in the same state without errors.`,
 		}
 		log.Info().Msg("Pub/Sub resource setup completed.")
 
-		// --- BigQuery Setup ---
-		log.Info().Msg("Starting BigQuery resource setup...")
+		// --- BigQueryConfig Setup ---
+		log.Info().Msg("Starting BigQueryConfig resource setup...")
 		bqRealClient, err := bigquery.NewClient(ctx, actualProjectID, clientOpts...)
 		if err != nil {
-			return fmt.Errorf("failed to create real BigQuery client for project '%s': %w", actualProjectID, err)
+			return fmt.Errorf("failed to create real BigQueryConfig client for project '%s': %w", actualProjectID, err)
 		}
 		defer func() {
 			if err := bqRealClient.Close(); err != nil {
-				log.Error().Err(err).Msg("Failed to close BigQuery client")
+				log.Error().Err(err).Msg("Failed to close BigQueryConfig client")
 			}
 		}()
 		bqAdapter := initialization.NewBigQueryClientAdapter(bqRealClient)
@@ -97,9 +97,9 @@ same configuration should result in the same state without errors.`,
 			return fmt.Errorf("failed to create BigQueryManager: %w", err)
 		}
 		if err := bqManager.Setup(ctx, cfg, environment); err != nil { // environment is used to pick project from config if not overridden
-			return fmt.Errorf("BigQuery setup failed: %w", err)
+			return fmt.Errorf("BigQueryConfig setup failed: %w", err)
 		}
-		log.Info().Msg("BigQuery resource setup completed.")
+		log.Info().Msg("BigQueryConfig resource setup completed.")
 
 		// --- Google Cloud Storage (GCS) Setup ---
 		log.Info().Msg("Starting GCS bucket setup...")

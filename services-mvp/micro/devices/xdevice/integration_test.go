@@ -39,7 +39,7 @@ const (
 	testProcessingInputTopicID        = "xdevice-input-topic"
 	testProcessingInputSubscriptionID = "xdevice-input-sub"
 
-	// BigQuery Emulator Test Config for Processing Service
+	// BigQueryConfig Emulator Test Config for Processing Service
 	testProcessingBigQueryEmulatorImage = "ghcr.io/goccy/bigquery-emulator:0.6.6"
 	testProcessingBigQueryGRPCPortStr   = "9060" // goccy/bigquery-emulator default gRPC port (as per user's provided docs)
 	testProcessingBigQueryRestPortStr   = "9050" // goccy/bigquery-emulator default HTTP/REST API port (as per user's provided docs)
@@ -72,7 +72,7 @@ func newEmulatorBigQueryClient(ctx context.Context, t *testing.T, projectID stri
 	}
 
 	client, err := bigquery.NewClient(ctx, projectID, clientOpts...)
-	require.NoError(t, err, "newEmulatorBigQueryClient: Failed to create BigQuery client. EmulatorHost: %s", emulatorHost)
+	require.NoError(t, err, "newEmulatorBigQueryClient: Failed to create BigQueryConfig client. EmulatorHost: %s", emulatorHost)
 	return client
 }
 
@@ -132,7 +132,7 @@ func setupBigQueryEmulatorForProcessingTest(t *testing.T, ctx context.Context) (
 		),
 	}
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{ContainerRequest: req, Started: true})
-	require.NoError(t, err, "Failed to start BigQuery emulator container. Check container logs and command arguments.")
+	require.NoError(t, err, "Failed to start BigQueryConfig emulator container. Check container logs and command arguments.")
 
 	host, err := container.Host(ctx)
 	require.NoError(t, err)
@@ -140,12 +140,12 @@ func setupBigQueryEmulatorForProcessingTest(t *testing.T, ctx context.Context) (
 	grpcMappedPort, err := container.MappedPort(ctx, testProcessingBigQueryGRPCPort)
 	require.NoError(t, err)
 	emulatorGRPCHost = fmt.Sprintf("%s:%s", host, grpcMappedPort.Port()) // Just host:port
-	t.Logf("BigQuery emulator container started, gRPC on: %s", emulatorGRPCHost)
+	t.Logf("BigQueryConfig emulator container started, gRPC on: %s", emulatorGRPCHost)
 
 	restMappedPort, err := container.MappedPort(ctx, testProcessingBigQueryRestPort)
 	require.NoError(t, err)
 	emulatorRESTHost = fmt.Sprintf("http://%s:%s", host, restMappedPort.Port()) // Includes http:// scheme
-	t.Logf("BigQuery emulator container started, REST on: %s", emulatorRESTHost)
+	t.Logf("BigQueryConfig emulator container started, REST on: %s", emulatorRESTHost)
 
 	// Set environment variables *before* creating the adminBqClient
 	t.Setenv("GOOGLE_CLOUD_PROJECT", testProcessingPubSubProjectID)
@@ -166,10 +166,10 @@ func setupBigQueryEmulatorForProcessingTest(t *testing.T, ctx context.Context) (
 		if !strings.Contains(err.Error(), "Already Exists") {
 			require.NoError(t, err, "Failed to create dataset '%s' on BQ emulator.", testProcessingBigQueryDatasetID)
 		} else {
-			t.Logf("BigQuery dataset '%s' already exists on emulator.", testProcessingBigQueryDatasetID)
+			t.Logf("BigQueryConfig dataset '%s' already exists on emulator.", testProcessingBigQueryDatasetID)
 		}
 	} else {
-		t.Logf("Created BigQuery dataset '%s' on emulator", testProcessingBigQueryDatasetID)
+		t.Logf("Created BigQueryConfig dataset '%s' on emulator", testProcessingBigQueryDatasetID)
 	}
 
 	table := dataset.Table(testProcessingBigQueryTableID)
@@ -182,9 +182,9 @@ func setupBigQueryEmulatorForProcessingTest(t *testing.T, ctx context.Context) (
 	if err != nil && !strings.Contains(err.Error(), "Already Exists") {
 		require.NoError(t, err, "Failed to create table '%s' on BQ emulator", testProcessingBigQueryTableID)
 	} else if err == nil {
-		t.Logf("Created BigQuery table '%s' on emulator", testProcessingBigQueryTableID)
+		t.Logf("Created BigQueryConfig table '%s' on emulator", testProcessingBigQueryTableID)
 	} else {
-		t.Logf("BigQuery table '%s' already exists on emulator or other error during creation: %v", testProcessingBigQueryTableID, err)
+		t.Logf("BigQueryConfig table '%s' already exists on emulator or other error during creation: %v", testProcessingBigQueryTableID, err)
 	}
 
 	return emulatorGRPCHost, emulatorRESTHost, func() { require.NoError(t, container.Terminate(ctx)) }
@@ -224,7 +224,7 @@ func TestProcessingService_Integration_FullFlow(t *testing.T) {
 	bqInserterCfg, err := LoadBigQueryInserterConfigFromEnv()
 	require.NoError(t, err)
 
-	// Use the helper to create the BigQuery client for the service's inserter
+	// Use the helper to create the BigQueryConfig client for the service's inserter
 	// This client needs to support gRPC for Put and potentially REST for metadata (like table.Metadata in NewBigQueryInserter)
 	// The newEmulatorBigQueryClient is now primarily REST-focused.
 	// For the service inserter, which does data Puts (gRPC), we might need a gRPC-focused client.
@@ -284,7 +284,7 @@ func TestProcessingService_Integration_FullFlow(t *testing.T) {
 	require.NotNil(t, queryClient)
 	defer queryClient.Close()
 
-	//language=BigQuery
+	//language=BigQueryConfig
 	queryString := fmt.Sprintf("SELECT uid, reading, device_eui, client_id, location_id, device_category, device_type FROM `%s.%s` WHERE device_eui = @eui LIMIT 1",
 		testProcessingBigQueryDatasetID, testProcessingBigQueryTableID)
 	query := queryClient.Query(queryString)

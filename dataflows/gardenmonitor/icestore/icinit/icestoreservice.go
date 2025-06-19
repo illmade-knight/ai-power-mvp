@@ -17,7 +17,7 @@ import (
 // Server holds all the components of our microservice.
 type Server struct {
 	logger zerolog.Logger
-	config *Config
+	config *IceServiceConfig
 	// The server now holds a pointer to the generic ProcessingService.
 	batchProcessing *consumers.ProcessingService[icestore.ArchivalData]
 	httpServer      *http.Server
@@ -25,7 +25,7 @@ type Server struct {
 
 // NewServer creates and configures a new Server instance.
 // Its signature is updated to accept the generic service type.
-func NewServer(cfg *Config, b *consumers.ProcessingService[icestore.ArchivalData], logger zerolog.Logger) *Server {
+func NewServer(cfg *IceServiceConfig, b *consumers.ProcessingService[icestore.ArchivalData], logger zerolog.Logger) *Server {
 	return &Server{
 		logger:          logger,
 		config:          cfg,

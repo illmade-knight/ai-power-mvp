@@ -35,14 +35,14 @@ func main() {
 	// --- 3. Build Service Components (Updated) ---
 	ctx := context.Background()
 
-	// Create the BigQuery client.
+	// Create the BigQueryConfig client.
 	// NOTE: This assumes a `NewProductionBigQueryClient` function exists in your bqstore package.
 	bqClient, err := bqstore.NewProductionBigQueryClient(ctx, &bqstore.BigQueryDatasetConfig{
 		ProjectID:       cfg.ProjectID,
-		CredentialsFile: cfg.BigQuery.CredentialsFile,
+		CredentialsFile: cfg.BigQueryConfig.CredentialsFile,
 	}, log.Logger)
 	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to create BigQuery client")
+		log.Fatal().Err(err).Msg("Failed to create BigQueryConfig client")
 	}
 	defer bqClient.Close()
 
@@ -60,12 +60,12 @@ func main() {
 	// Create the bqstore-specific components.
 	bqInserterCfg := &bqstore.BigQueryDatasetConfig{
 		ProjectID: cfg.ProjectID,
-		DatasetID: cfg.BigQuery.DatasetID,
-		TableID:   cfg.BigQuery.TableID,
+		DatasetID: cfg.BigQueryConfig.DatasetID,
+		TableID:   cfg.BigQueryConfig.TableID,
 	}
 	bigQueryInserter, err := bqstore.NewBigQueryInserter[types.GardenMonitorReadings](ctx, bqClient, bqInserterCfg, log.Logger)
 	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to create BigQuery inserter")
+		log.Fatal().Err(err).Msg("Failed to create BigQueryConfig inserter")
 	}
 
 	batcherCfg := &bqstore.BatchInserterConfig{

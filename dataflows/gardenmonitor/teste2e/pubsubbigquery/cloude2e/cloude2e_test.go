@@ -89,7 +89,7 @@ func TestE2E_Cloud_MqttToBigQueryFlow(t *testing.T) {
 	pubsubCleanup := setupRealPubSub(t, ctx, projectID, topicID, subscriptionID)
 	defer pubsubCleanup()
 
-	log.Info().Str("dataset", datasetID).Str("table", tableID).Msg("CloudTest: Setting up real BigQuery resources...")
+	log.Info().Str("dataset", datasetID).Str("table", tableID).Msg("CloudTest: Setting up real BigQueryConfig resources...")
 	bqCleanup := setupRealBigQuery(t, ctx, projectID, datasetID, tableID)
 	defer bqCleanup()
 
@@ -145,7 +145,7 @@ func TestE2E_Cloud_MqttToBigQueryFlow(t *testing.T) {
 			SubscriptionID  string `mapstructure:"subscription_id"`
 			CredentialsFile string `mapstructure:"credentials_file"`
 		}{SubscriptionID: subscriptionID},
-		BigQuery: bqstore.BigQueryDatasetConfig{
+		BigQueryConfig: bqstore.BigQueryDatasetConfig{
 			ProjectID: projectID,
 			DatasetID: datasetID,
 			TableID:   tableID,
@@ -164,9 +164,9 @@ func TestE2E_Cloud_MqttToBigQueryFlow(t *testing.T) {
 
 	bqLogger := log.With().Str("service", "bq-processor").Logger()
 
-	// This client connects to the real BigQuery service.
+	// This client connects to the real BigQueryConfig service.
 	bqClient, err := bigquery.NewClient(ctx, projectID)
-	require.NoError(t, err, "Failed to create real BigQuery client")
+	require.NoError(t, err, "Failed to create real BigQueryConfig client")
 	defer bqClient.Close()
 
 	bqConsumer, err := consumers.NewGooglePubSubConsumer(ctx, &consumers.GooglePubSubConsumerConfig{
@@ -176,7 +176,7 @@ func TestE2E_Cloud_MqttToBigQueryFlow(t *testing.T) {
 	require.NoError(t, err)
 
 	// *** REFACTORED PART: Use the new, single convenience constructor ***
-	batchInserter, err := bqstore.NewBigQueryBatchProcessor[types.GardenMonitorReadings](ctx, bqClient, &bqCfg.BatchProcessing.BatchInserterConfig, &bqCfg.BigQuery, bqLogger)
+	batchInserter, err := bqstore.NewBigQueryBatchProcessor[types.GardenMonitorReadings](ctx, bqClient, &bqCfg.BatchProcessing.BatchInserterConfig, &bqCfg.BigQueryConfig, bqLogger)
 	require.NoError(t, err)
 
 	// *** REFACTORED PART: Use the new service constructor ***
@@ -186,7 +186,7 @@ func TestE2E_Cloud_MqttToBigQueryFlow(t *testing.T) {
 	bqServer := bqinit.NewServer(bqCfg, processingService, bqLogger)
 	go func() {
 		if err := bqServer.Start(); err != nil && !errors.Is(err, context.Canceled) {
-			t.Errorf("BigQuery Processing server failed: %v", err)
+			t.Errorf("BigQueryConfig Processing server failed: %v", err)
 		}
 	}()
 	defer bqServer.Shutdown()
@@ -216,7 +216,7 @@ func TestE2E_Cloud_MqttToBigQueryFlow(t *testing.T) {
 	require.NoError(t, token.Error())
 	log.Info().Msg("CloudTest: Published test message to MQTT.")
 
-	// --- 7. Verify Data in Real BigQuery ---
+	// --- 7. Verify Data in Real BigQueryConfig ---
 	var receivedRows []types.GardenMonitorReadings
 	var lastQueryErr error
 	// Allow ample time for data to propagate through the live cloud services.
@@ -228,10 +228,10 @@ VerificationLoop:
 	for {
 		select {
 		case <-verificationTimeout:
-			t.Fatalf("Test timed out waiting for BigQuery results. Last error: %v", lastQueryErr)
+			t.Fatalf("Test timed out waiting for BigQueryConfig results. Last error: %v", lastQueryErr)
 		case <-tick.C:
-			log.Info().Msg("CloudTest: Polling BigQuery for results...")
-			// Use the real BigQuery client and resource names.
+			log.Info().Msg("CloudTest: Polling BigQueryConfig for results...")
+			// Use the real BigQueryConfig client and resource names.
 			queryString := fmt.Sprintf("SELECT * FROM `%s.%s` WHERE uid = @uid", datasetID, tableID)
 			query := bqClient.Query(queryString)
 			query.Parameters = []bigquery.QueryParameter{{Name: "uid", Value: testMqttDeviceUID}}
@@ -266,7 +266,7 @@ VerificationLoop:
 	}
 
 	// --- 8. Final Assertions ---
-	require.Len(t, receivedRows, 1, "Expected exactly one row in BigQuery for the test message")
+	require.Len(t, receivedRows, 1, "Expected exactly one row in BigQueryConfig for the test message")
 	assert.Equal(t, testPayload.DE, receivedRows[0].DE)
 	assert.Equal(t, testPayload.Sequence, receivedRows[0].Sequence)
 	assert.Equal(t, testPayload.Battery, receivedRows[0].Battery)
@@ -320,7 +320,7 @@ func setupRealPubSub(t *testing.T, ctx context.Context, projectID, topicID, subI
 func setupRealBigQuery(t *testing.T, ctx context.Context, projectID, datasetID, tableID string) func() {
 	t.Helper()
 	client, err := bigquery.NewClient(ctx, projectID)
-	require.NoError(t, err, "Failed to create real BigQuery client")
+	require.NoError(t, err, "Failed to create real BigQueryConfig client")
 
 	// Create a dataset that will automatically expire.
 	datasetMeta := &bigquery.DatasetMetadata{
@@ -332,7 +332,7 @@ func setupRealBigQuery(t *testing.T, ctx context.Context, projectID, datasetID, 
 	if err != nil && !strings.Contains(err.Error(), "Already Exists") {
 		require.NoError(t, err, "Failed to create BQ dataset %s", datasetID)
 	}
-	t.Logf("Created temporary BigQuery Dataset: %s", datasetID)
+	t.Logf("Created temporary BigQueryConfig Dataset: %s", datasetID)
 
 	// Infer schema from the payload struct and create the table.
 	schema, err := bigquery.InferSchema(types.GardenMonitorReadings{})
@@ -342,12 +342,12 @@ func setupRealBigQuery(t *testing.T, ctx context.Context, projectID, datasetID, 
 	if err != nil && !strings.Contains(err.Error(), "Already Exists") {
 		require.NoError(t, err)
 	}
-	t.Logf("Created BigQuery table %s in dataset %s", tableID, datasetID)
+	t.Logf("Created BigQueryConfig table %s in dataset %s", tableID, datasetID)
 
 	return func() {
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
-		t.Logf("Tearing down Cloud BigQuery resources...")
+		t.Logf("Tearing down Cloud BigQueryConfig resources...")
 
 		// Deleting the dataset will also delete all tables within it.
 		if err := client.Dataset(datasetID).DeleteWithContents(cleanupCtx); err != nil {

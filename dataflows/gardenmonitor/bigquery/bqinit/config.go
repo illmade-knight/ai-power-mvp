@@ -20,7 +20,7 @@ type Config struct {
 	// HTTPPort is the port for the health check server.
 	HTTPPort string `mapstructure:"http_port"`
 
-	// GCP project ID, used by both Pub/Sub and BigQuery clients.
+	// GCP project ID, used by both Pub/Sub and BigQueryConfig clients.
 	ProjectID string `mapstructure:"project_id"`
 
 	// Consumer holds settings for the Pub/Sub subscriber.
@@ -29,8 +29,8 @@ type Config struct {
 		CredentialsFile string `mapstructure:"credentials_file"`
 	} `mapstructure:"consumer"`
 
-	// BigQuery holds settings for the BigQuery inserter.
-	BigQuery bqstore.BigQueryDatasetConfig `mapstructure:"bigquery"`
+	// BigQueryConfig holds settings for the BigQueryConfig inserter.
+	BigQueryConfig bqstore.BigQueryDatasetConfig `mapstructure:"bigquery"`
 
 	// BatchProcessing holds settings for the processing and batchProcessing logic.
 	BatchProcessing struct {
@@ -63,8 +63,8 @@ func LoadConfig() (*Config, error) {
 	pflag.String("log-level", "", "Log level (debug, info, warn, error)")
 	pflag.String("project-id", "", "GCP Project ID")
 	pflag.String("subscription-id", "", "Pub/Sub Subscription ID")
-	pflag.String("bq-dataset-id", "", "BigQuery Dataset ID")
-	pflag.String("bq-table-id", "", "BigQuery Table ID")
+	pflag.String("bq-dataset-id", "", "BigQueryConfig Dataset ID")
+	pflag.String("bq-table-id", "", "BigQueryConfig Table ID")
 	pflag.Parse()
 	err := v.BindPFlags(pflag.CommandLine)
 	if err != nil {
@@ -98,8 +98,8 @@ func LoadConfig() (*Config, error) {
 	cfg.LogLevel = v.GetString("log-level")
 	cfg.ProjectID = v.GetString("project-id")
 	cfg.Consumer.SubscriptionID = v.GetString("subscription-id")
-	cfg.BigQuery.DatasetID = v.GetString("bq-dataset-id")
-	cfg.BigQuery.TableID = v.GetString("bq-table-id")
+	cfg.BigQueryConfig.DatasetID = v.GetString("bq-dataset-id")
+	cfg.BigQueryConfig.TableID = v.GetString("bq-table-id")
 
 	// Unmarshal the rest of the config.
 	if err := v.Unmarshal(&cfg); err != nil {

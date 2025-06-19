@@ -71,7 +71,7 @@ func TestGardenMonitorService_FullFlow(t *testing.T) {
 	})
 	defer pubsubCleanup()
 
-	log.Info().Msg("Setting up BigQuery emulator for test...")
+	log.Info().Msg("Setting up BigQueryConfig emulator for test...")
 
 	bqOptions, bqCleanup := emulators.SetupBigQueryEmulator(t, ctx, emulators.BigQueryConfig{
 		GCImageContainer: emulators.GCImageContainer{
@@ -99,7 +99,7 @@ func TestGardenMonitorService_FullFlow(t *testing.T) {
 		}{
 			SubscriptionID: testInputSubscriptionID,
 		},
-		BigQuery: bqstore.BigQueryDatasetConfig{
+		BigQueryConfig: bqstore.BigQueryDatasetConfig{
 			DatasetID: testBigQueryDatasetID,
 			TableID:   testBigQueryTableID,
 		},
@@ -135,8 +135,8 @@ func TestGardenMonitorService_FullFlow(t *testing.T) {
 	// Create the bqstore components.
 	inserter, err := bqstore.NewBigQueryInserter[types.GardenMonitorReadings](ctx, bqClient, &bqstore.BigQueryDatasetConfig{
 		ProjectID: cfg.ProjectID,
-		DatasetID: cfg.BigQuery.DatasetID,
-		TableID:   cfg.BigQuery.TableID,
+		DatasetID: cfg.BigQueryConfig.DatasetID,
+		TableID:   cfg.BigQueryConfig.TableID,
 	}, testLogger)
 	require.NoError(t, err)
 
@@ -211,7 +211,7 @@ func TestGardenMonitorService_FullFlow(t *testing.T) {
 		receivedRows = append(receivedRows, row)
 	}
 
-	assert.Len(t, receivedRows, messageCount, "Incorrect number of rows found in BigQuery")
+	assert.Len(t, receivedRows, messageCount, "Incorrect number of rows found in BigQueryConfig")
 	assert.Equal(t, lastTestPayload.Sequence, receivedRows[len(receivedRows)-1].Sequence, "Data mismatch in last row")
 }
 

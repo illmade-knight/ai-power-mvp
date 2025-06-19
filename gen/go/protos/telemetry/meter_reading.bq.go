@@ -6,7 +6,7 @@ import (
 )
 
 // --- Wrapper struct implementing bigquery.ValueSaver
-// we get a go struct fom pb but to use it in BigQuery etc we want to adjust it without editing the auto get file
+// we get a go struct fom pb but to use it in BigQueryConfig etc we want to adjust it without editing the auto get file
 //---
 
 func WrapMeterReadingForBQ(r *MeterReading) *MeterReadingBQWrapper {
@@ -24,7 +24,7 @@ func WrapMeterReadingForBQ(r *MeterReading) *MeterReadingBQWrapper {
 		DeviceType:     r.DeviceType,
 	}
 
-	// Handle protobuf Timestamps, converting to time.Time for BigQuery
+	// Handle protobuf Timestamps, converting to time.Time for BigQueryConfig
 	// If s.MeterReading was just initialized to zero, these timestamp fields will be nil,
 	// and their corresponding entries in the 'row' map will remain nil (or become time.Time{} if BQ requires non-nil).
 	// For schema inference, time.Time{} is fine. For actual data, nil is fine for nullable BQ TIMESTAMPs.
@@ -44,15 +44,15 @@ func WrapMeterReadingForBQ(r *MeterReading) *MeterReadingBQWrapper {
 }
 
 // MeterReadingBQWrapper wraps the auto-generated telemetrypb.MeterReading
-// to provide a Save method for BigQuery, ensuring snake_case column names for schema inference.
+// to provide a Save method for BigQueryConfig, ensuring snake_case column names for schema inference.
 type MeterReadingBQWrapper struct {
-	Uid                        string    `bigquery:"uid"`             // BigQuery: uid
-	Reading                    float32   `bigquery:"reading"`         // BigQuery: reading
-	AverageCurrent             float32   `bigquery:"average_current"` // BigQuery: average_current
-	MaxCurrent                 float32   `bigquery:"max_current"`     // BigQuery: max_current
-	MaxVoltage                 float32   `bigquery:"max_voltage"`     // BigQuery: max_voltage
-	AverageVoltage             float32   `bigquery:"average_voltage"` // BigQuery: average_voltage
-	DeviceEui                  string    `bigquery:"device_eui"`      // BigQuery: device_eui
+	Uid                        string    `bigquery:"uid"`             // BigQueryConfig: uid
+	Reading                    float32   `bigquery:"reading"`         // BigQueryConfig: reading
+	AverageCurrent             float32   `bigquery:"average_current"` // BigQueryConfig: average_current
+	MaxCurrent                 float32   `bigquery:"max_current"`     // BigQueryConfig: max_current
+	MaxVoltage                 float32   `bigquery:"max_voltage"`     // BigQueryConfig: max_voltage
+	AverageVoltage             float32   `bigquery:"average_voltage"` // BigQueryConfig: average_voltage
+	DeviceEui                  string    `bigquery:"device_eui"`      // BigQueryConfig: device_eui
 	ClientId                   string    `bigquery:"client_id"`
 	LocationId                 string    `bigquery:"location_id"`
 	DeviceCategory             string    `bigquery:"device_category"`
@@ -63,12 +63,12 @@ type MeterReadingBQWrapper struct {
 }
 
 // Save implements the bigquery.ValueSaver interface.
-// The keys of the returned map define the BigQuery column names.
+// The keys of the returned map define the BigQueryConfig column names.
 // The types of the values in the map (when Save is called on a zero instance)
-// help bigquery.InferSchema determine the BigQuery column types.
+// help bigquery.InferSchema determine the BigQueryConfig column types.
 func (s *MeterReadingBQWrapper) Save() (row map[string]bigquery.Value, insertID string, err error) {
 	// Populate the map from the (potentially zero-valued if just initialized) embedded struct.
-	// The keys are snake_case for BigQuery column names.
+	// The keys are snake_case for BigQueryConfig column names.
 	row = map[string]bigquery.Value{
 		"uid":                          s.Uid,
 		"reading":                      float64(s.Reading),

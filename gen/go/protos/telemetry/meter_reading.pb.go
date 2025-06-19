@@ -25,20 +25,20 @@ const (
 // MeterReading represents the structured meter reading data after decoding.
 type MeterReading struct {
 	state                      protoimpl.MessageState `protogen:"open.v1"`
-	Uid                        string                 `protobuf:"bytes,1,opt,name=uid,proto3" json:"uid,omitempty"`                                                                                    // BigQuery: uid
-	Reading                    float32                `protobuf:"fixed32,2,opt,name=reading,proto3" json:"reading,omitempty"`                                                                          // BigQuery: reading
-	AverageCurrent             float32                `protobuf:"fixed32,3,opt,name=average_current,json=averageCurrent,proto3" json:"average_current,omitempty"`                                      // BigQuery: average_current
-	MaxCurrent                 float32                `protobuf:"fixed32,4,opt,name=max_current,json=maxCurrent,proto3" json:"max_current,omitempty"`                                                  // BigQuery: max_current
-	MaxVoltage                 float32                `protobuf:"fixed32,5,opt,name=max_voltage,json=maxVoltage,proto3" json:"max_voltage,omitempty"`                                                  // BigQuery: max_voltage
-	AverageVoltage             float32                `protobuf:"fixed32,6,opt,name=average_voltage,json=averageVoltage,proto3" json:"average_voltage,omitempty"`                                      // BigQuery: average_voltage
-	DeviceEui                  string                 `protobuf:"bytes,7,opt,name=device_eui,json=deviceEui,proto3" json:"device_eui,omitempty"`                                                       // BigQuery: device_eui
-	ClientId                   string                 `protobuf:"bytes,8,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`                                                          // BigQuery: client_id
-	LocationId                 string                 `protobuf:"bytes,9,opt,name=location_id,json=locationId,proto3" json:"location_id,omitempty"`                                                    // BigQuery: location_id
-	DeviceCategory             string                 `protobuf:"bytes,10,opt,name=device_category,json=deviceCategory,proto3" json:"device_category,omitempty"`                                       // BigQuery: device_category
-	OriginalMqttTime           *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=original_mqtt_time,json=originalMqttTime,proto3" json:"original_mqtt_time,omitempty"`                               // BigQuery: original_mqtt_time
-	UpstreamIngestionTimestamp *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=upstream_ingestion_timestamp,json=upstreamIngestionTimestamp,proto3" json:"upstream_ingestion_timestamp,omitempty"` // BigQuery: upstream_ingestion_timestamp
-	ProcessedTimestamp         *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=processed_timestamp,json=processedTimestamp,proto3" json:"processed_timestamp,omitempty"`                           // BigQuery: processed_timestamp
-	DeviceType                 string                 `protobuf:"bytes,14,opt,name=device_type,json=deviceType,proto3" json:"device_type,omitempty"`                                                   // BigQuery: device_type
+	Uid                        string                 `protobuf:"bytes,1,opt,name=uid,proto3" json:"uid,omitempty"`                                                                                    // BigQueryConfig: uid
+	Reading                    float32                `protobuf:"fixed32,2,opt,name=reading,proto3" json:"reading,omitempty"`                                                                          // BigQueryConfig: reading
+	AverageCurrent             float32                `protobuf:"fixed32,3,opt,name=average_current,json=averageCurrent,proto3" json:"average_current,omitempty"`                                      // BigQueryConfig: average_current
+	MaxCurrent                 float32                `protobuf:"fixed32,4,opt,name=max_current,json=maxCurrent,proto3" json:"max_current,omitempty"`                                                  // BigQueryConfig: max_current
+	MaxVoltage                 float32                `protobuf:"fixed32,5,opt,name=max_voltage,json=maxVoltage,proto3" json:"max_voltage,omitempty"`                                                  // BigQueryConfig: max_voltage
+	AverageVoltage             float32                `protobuf:"fixed32,6,opt,name=average_voltage,json=averageVoltage,proto3" json:"average_voltage,omitempty"`                                      // BigQueryConfig: average_voltage
+	DeviceEui                  string                 `protobuf:"bytes,7,opt,name=device_eui,json=deviceEui,proto3" json:"device_eui,omitempty"`                                                       // BigQueryConfig: device_eui
+	ClientId                   string                 `protobuf:"bytes,8,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`                                                          // BigQueryConfig: client_id
+	LocationId                 string                 `protobuf:"bytes,9,opt,name=location_id,json=locationId,proto3" json:"location_id,omitempty"`                                                    // BigQueryConfig: location_id
+	DeviceCategory             string                 `protobuf:"bytes,10,opt,name=device_category,json=deviceCategory,proto3" json:"device_category,omitempty"`                                       // BigQueryConfig: device_category
+	OriginalMqttTime           *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=original_mqtt_time,json=originalMqttTime,proto3" json:"original_mqtt_time,omitempty"`                               // BigQueryConfig: original_mqtt_time
+	UpstreamIngestionTimestamp *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=upstream_ingestion_timestamp,json=upstreamIngestionTimestamp,proto3" json:"upstream_ingestion_timestamp,omitempty"` // BigQueryConfig: upstream_ingestion_timestamp
+	ProcessedTimestamp         *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=processed_timestamp,json=processedTimestamp,proto3" json:"processed_timestamp,omitempty"`                           // BigQueryConfig: processed_timestamp
+	DeviceType                 string                 `protobuf:"bytes,14,opt,name=device_type,json=deviceType,proto3" json:"device_type,omitempty"`                                                   // BigQueryConfig: device_type
 	unknownFields              protoimpl.UnknownFields
 	sizeCache                  protoimpl.SizeCache
 }
