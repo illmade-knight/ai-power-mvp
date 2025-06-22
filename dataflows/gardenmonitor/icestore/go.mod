@@ -4,7 +4,7 @@ go 1.23.0
 
 require (
 	cloud.google.com/go/storage v1.55.0
-	github.com/illmade-knight/go-iot/pkg v0.0.0-20250619201927-3bee43e5001d
+	github.com/illmade-knight/go-iot/pkg v0.0.0-20250622133709-c19b8a1d9933
 	github.com/rs/zerolog v1.34.0
 	github.com/spf13/pflag v1.0.6
 	github.com/spf13/viper v1.20.1

@@ -5,7 +5,7 @@ go 1.23.0
 require (
 	cloud.google.com/go/pubsub v1.49.0
 	github.com/eclipse/paho.mqtt.golang v1.5.0
-	github.com/illmade-knight/go-iot/pkg v0.0.0-20250619140441-cf0455176e65
+	github.com/illmade-knight/go-iot/pkg v0.0.0-20250622133709-c19b8a1d9933
 	github.com/rs/zerolog v1.34.0
 	github.com/spf13/pflag v1.0.6
 	github.com/spf13/viper v1.20.1
@@ -117,7 +117,7 @@ require (
 	golang.org/x/time v0.12.0 // indirect
 	golang.org/x/tools v0.33.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
-	google.golang.org/api v0.237.0 // indirect
+	google.golang.org/api v0.238.0 // indirect
 	google.golang.org/genproto v0.0.0-20250505200425-f936aa4a68b2 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250528174236-200df99c418a // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250603155806-513f23925822 // indirect

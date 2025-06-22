@@ -3,7 +3,7 @@ module gcpdeploy
 go 1.23.0
 
 require (
-	github.com/illmade-knight/go-iot/pkg v0.0.0-20250613211930-009a6a250a72
+	github.com/illmade-knight/go-iot/pkg v0.0.0-20250622133709-c19b8a1d9933
 	github.com/rs/zerolog v1.34.0
 )
 
@@ -36,7 +36,7 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.6 // indirect
 	github.com/googleapis/gax-go/v2 v2.14.2 // indirect
-	github.com/illmade-knight/go-iot/gen/go/protos/telemetry v0.0.0-20250613202916-805cbe86fc36 // indirect
+	github.com/illmade-knight/go-iot/gen/go/protos/telemetry v0.0.0-20250619201927-3bee43e5001d // indirect
 	github.com/klauspost/compress v1.17.4 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.5 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
@@ -67,7 +67,7 @@ require (
 	golang.org/x/time v0.12.0 // indirect
 	golang.org/x/tools v0.33.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
-	google.golang.org/api v0.237.0 // indirect
+	google.golang.org/api v0.238.0 // indirect
 	google.golang.org/genproto v0.0.0-20250505200425-f936aa4a68b2 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250512202823-5a2f75b736a9 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250603155806-513f23925822 // indirect

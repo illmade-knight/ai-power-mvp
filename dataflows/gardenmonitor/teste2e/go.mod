@@ -10,7 +10,7 @@ require (
 	github.com/illmade-knight/ai-power-mvp/dataflows/gardenmonitor/bigquery v0.0.0
 	github.com/illmade-knight/ai-power-mvp/dataflows/gardenmonitor/icestore v0.0.0
 	github.com/illmade-knight/ai-power-mvp/dataflows/gardenmonitor/ingestion v0.0.0
-	github.com/illmade-knight/go-iot/pkg v0.0.0-20250619201927-3bee43e5001d
+	github.com/illmade-knight/go-iot/pkg v0.0.0-20250622133709-c19b8a1d9933
 	github.com/rs/zerolog v1.34.0
 	github.com/stretchr/testify v1.10.0
 	google.golang.org/api v0.238.0
@@ -60,7 +60,7 @@ require (
 	github.com/googleapis/enterprise-certificate-proxy v0.3.6 // indirect
 	github.com/googleapis/gax-go/v2 v2.14.2 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
-	github.com/illmade-knight/go-iot/gen/go/protos/telemetry v0.0.0-20250619140441-cf0455176e65 // indirect
+	github.com/illmade-knight/go-iot/gen/go/protos/telemetry v0.0.0-20250619201927-3bee43e5001d // indirect
 	github.com/klauspost/compress v1.17.4 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.5 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect

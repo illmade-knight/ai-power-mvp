@@ -75,16 +75,16 @@ func buildTestServicesDefinition(runID, gcpProjectID string) *servicemanager.Top
 				Description: "Ephemeral dataflow for the cloud load test.",
 				Services:    []string{"ingestion-service", "analysis-service"},
 				Lifecycle: &servicemanager.LifecyclePolicy{
-					Strategy:          servicemanager.LifecycleStrategyEphemeral,
-					KeepDatasetOnTest: *keepDataset, // Set from the command-line flag
+					Strategy:            servicemanager.LifecycleStrategyEphemeral,
+					KeepResourcesOnTest: *keepDataset, // Set from the command-line flag
 				},
 			},
 		},
 		Resources: servicemanager.ResourcesSpec{
-			PubSubTopics: []servicemanager.PubSubTopic{
+			MessagingTopics: []servicemanager.MessagingTopicConfig{
 				{Name: topicID, ProducerService: "ingestion-service"},
 			},
-			PubSubSubscriptions: []servicemanager.PubSubSubscription{
+			MessagingSubscriptions: []servicemanager.MessagingSubscriptionConfig{
 				{Name: subscriptionID, Topic: topicID, ConsumerService: "analysis-service"},
 			},
 			BigQueryDatasets: []servicemanager.BigQueryDataset{
@@ -141,11 +141,11 @@ func TestManagedCloudLoad(t *testing.T) {
 
 	// --- 3. Use ServiceManager to Provision Infrastructure ---
 	log.Info().Str("runID", runID).Msg("Initializing ServiceManager to provision dataflow...")
-	manager, err := servicemanager.NewServiceManager(ctx, servicesDef, "loadtest", schemaRegistry, testLogger)
+	serviceManager, err := servicemanager.NewServiceManager(ctx, servicesDef, "loadtest", schemaRegistry, testLogger)
 	require.NoError(t, err)
 
 	dataflowName := servicesConfig.Dataflows[0].Name
-	provisioned, err := manager.SetupDataflow(ctx, "loadtest", dataflowName)
+	provisioned, err := serviceManager.SetupDataflow(ctx, "loadtest", dataflowName)
 	require.NoError(t, err, "ServiceManager.SetupDataflow failed")
 
 	t.Cleanup(func() {
@@ -154,7 +154,7 @@ func TestManagedCloudLoad(t *testing.T) {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cleanupCancel()
 		log.Info().Str("runID", runID).Msg("Test finished. Tearing down dataflow resources...")
-		teardownErr := manager.TeardownDataflow(cleanupCtx, "loadtest", dataflowName)
+		teardownErr := serviceManager.TeardownDataflow(cleanupCtx, "loadtest", dataflowName)
 		assert.NoError(t, teardownErr, "ServiceManager.TeardownDataflow failed")
 	})
 
